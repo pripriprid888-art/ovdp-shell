@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>OVDP Shell</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        background: #1a1a2e;
+        color: #eee;
+        height: 52px;
+        overflow: hidden;
+        user-select: none;
+        -webkit-app-region: drag;
+      }
+
+      .toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        height: 52px;
+        padding: 0 12px;
+      }
+
+      button,
+      .url-bar {
+        -webkit-app-region: no-drag;
+      }
+
+      button {
+        background: #2d2d44;
+        border: 1px solid #3d3d5c;
+        border-radius: 6px;
+        color: #eee;
+        cursor: pointer;
+        font-size: 13px;
+        height: 32px;
+        min-width: 32px;
+        padding: 0 10px;
+      }
+
+      button:hover:not(:disabled) {
+        background: #3d3d5c;
+      }
+
+      button:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+
+      button.active {
+        background: #3d3520;
+        border-color: #c9a227;
+        color: #c9a227;
+      }
+
+      button.site-active {
+        border-color: #6ea8fe;
+      }
+
+      .nav-group {
+        display: flex;
+        gap: 4px;
+      }
+
+      .status-dot {
+        border-radius: 50%;
+        display: inline-block;
+        height: 8px;
+        margin-right: 5px;
+        vertical-align: 1px;
+        width: 8px;
+      }
+
+      .status-unknown {
+        background: #666;
+      }
+
+      .status-checking {
+        animation: pulse 1s infinite;
+        background: #6ea8fe;
+      }
+
+      .status-authenticated {
+        background: #4ade80;
+        box-shadow: 0 0 6px rgba(74, 222, 128, 0.45);
+      }
+
+      .status-guest {
+        background: #f87171;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.35;
+        }
+      }
+
+      .url-bar {
+        flex: 1;
+        background: #12121f;
+        border: 1px solid #3d3d5c;
+        border-radius: 6px;
+        color: #aaa;
+        font-size: 12px;
+        height: 32px;
+        line-height: 32px;
+        overflow: hidden;
+        padding: 0 10px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .url-bar.loading {
+        color: #6ea8fe;
+      }
+
+      .brand {
+        color: #c9a227;
+        font-size: 13px;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        margin-right: 4px;
+        white-space: nowrap;
+      }
+
+      .session-actions button {
+        font-size: 11px;
+        height: 28px;
+        padding: 0 8px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <span class="brand">OVDP Shell</span>
+
+      <div class="nav-group">
+        <button id="btn-back" title="Назад" disabled>&#8592;</button>
+        <button id="btn-forward" title="Вперед" disabled>&#8594;</button>
+        <button id="btn-reload" title="Оновити">&#8635;</button>
+      </div>
+
+      <div class="nav-group">
+        <button id="btn-home" title="Головна активного сайту">Головна</button>
+        <button id="btn-signin" title="Вхід активного сайту">Вхід</button>
+        <button id="btn-catalog" title="Inzhur — каталог / кабінет">
+          <span id="status-inzhur" class="status-dot status-unknown"></span>Inzhur
+        </button>
+        <button id="btn-univer" title="UNIVER — каталог / кабінет">
+          <span id="status-univer" class="status-dot status-unknown"></span>UNIVER
+        </button>
+        <button id="btn-privat" title="Приват24 — облігації">
+          <span id="status-privat" class="status-dot status-unknown"></span>Privat
+        </button>
+        <button id="btn-panel" title="Панель: ОВДП + автоматизація">Панель</button>
+      </div>
+
+      <div class="nav-group session-actions">
+        <button id="btn-verify-sessions" title="Перевірити сесії">Сесії</button>
+      </div>
+
+      <div id="url-bar" class="url-bar">Завантаження…</div>
+    </div>
+
+    <script src="toolbar.js"></script>
+  </body>
+</html>

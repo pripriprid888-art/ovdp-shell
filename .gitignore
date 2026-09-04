@@ -1,0 +1,14 @@
+node_modules/
+dist/
+out/
+.DS_Store
+*.log
+.env
+.env.*
+credentials.dat*
+credentials-index.json
+onboarding.json
+securities.json
+inzhur-securities.json
+*.dat
+.cursor/
