@@ -65,6 +65,12 @@ const PREPARE_BONDS_LIST_JS = `(() => {
   return { dismissed, uahFilter: false };
 })()`;
 
+const {
+  FETCH_BARGAINING_BONDS_JS,
+  FETCH_AUTH_BARGAINING_BONDS_JS,
+  parseBargainingApiResponse,
+} = require('./privat-api');
+
 const CATALOG_URL = 'https://next.privat24.ua/bonds/list';
 const BOND_CATEGORY = 'Державні облігації';
 
@@ -100,6 +106,7 @@ function privatPurchaseUrl(isin) {
 }
 
 const { toCalculatorFields, normalizeBuyPriceUah } = require('./utils');
+const { normalizeListedYieldTypeLabel } = require('../bond-calculator');
 
 function processRawItems(rawItems) {
   const seen = new Set();
@@ -109,12 +116,15 @@ function processRawItems(rawItems) {
     const isin = item.isin;
     if (!isin || seen.has(isin)) continue;
 
-    const { amount, currency } = parsePrivatPrice(item.price_raw);
+    const { amount, currency: parsedCurrency } = parsePrivatPrice(item.price_raw);
+    const currency = parsedCurrency || item.currency || item.raw_fields?.currency || null;
     if (currency !== 'UAH' || amount == null) continue;
 
     seen.add(isin);
-    const yieldPercent = formatYield(item.yield_raw);
+    const apiRaw = item.raw_fields && typeof item.raw_fields === 'object' ? item.raw_fields : {};
+    const yieldPercent = formatYield(item.yield_raw ?? apiRaw.buyYield);
     const title = item.name ? `${item.name} ${isin}` : `ОВДП ${isin}`;
+    const listedYieldType = normalizeListedYieldTypeLabel(apiRaw.yieldType || item.yieldType);
 
     const proposal = {
       site_id: 'privat',
@@ -122,7 +132,8 @@ function processRawItems(rawItems) {
       title,
       isin,
       yield_percent: yieldPercent,
-      maturity_date: normalizeMaturityDate(item.maturity_date),
+      listed_yield_type: listedYieldType,
+      maturity_date: normalizeMaturityDate(item.maturity_date || apiRaw.maturity),
       buy_price: normalizeBuyPriceUah(amount),
       sell_price: null,
       source_url: CATALOG_URL,
@@ -130,10 +141,11 @@ function processRawItems(rawItems) {
       tag: 'UAH',
       nominal_value: '1000 ₴',
       raw_fields: {
+        ...apiRaw,
         currency: 'UAH',
-        price_raw: item.price_raw || '',
-        yield_raw: item.yield_raw || '',
-        name: item.name || '',
+        price_raw: item.price_raw ?? apiRaw.buyPrice ?? '',
+        yield_raw: item.yield_raw ?? apiRaw.buyYield ?? '',
+        name: item.name || apiRaw.name || '',
       },
       is_buyable: true,
       scanned_at: new Date().toISOString(),
@@ -145,10 +157,79 @@ function processRawItems(rawItems) {
   return proposals;
 }
 
+function processApiCatalogResult(apiResult) {
+  const parsed = parseBargainingApiResponse(apiResult);
+  return {
+    ...parsed,
+    items: processRawItems(parsed.items),
+  };
+}
+
+function normalizePrivatIsin(isin) {
+  return String(isin || '').trim().toUpperCase();
+}
+
+/**
+ * Catalog = ISINs visible on bonds/list (UAH). API enriches rows; API-only rows are dropped.
+ */
+function mergeDomWithApiCatalog(domRawItems, apiResult) {
+  const parsed = apiResult ? parseBargainingApiResponse(apiResult) : { items: [], xref: null };
+  const apiItems = parsed.items || [];
+  const apiByIsin = new Map();
+  apiItems.forEach((item) => {
+    const isin = normalizePrivatIsin(item.isin);
+    if (isin) apiByIsin.set(isin, item);
+  });
+
+  const mergedRaw = [];
+  const domIsins = new Set();
+
+  for (const dom of domRawItems || []) {
+    const isin = normalizePrivatIsin(dom.isin);
+    if (!isin) continue;
+    domIsins.add(isin);
+    const api = apiByIsin.get(isin);
+    const apiRaw = api?.raw_fields && typeof api.raw_fields === 'object' ? api.raw_fields : {};
+
+    mergedRaw.push({
+      isin,
+      name: dom.name || api?.name || null,
+      maturity_date: dom.maturity_date || api?.maturity_date || apiRaw.maturity || null,
+      price_raw: dom.price_raw ?? api?.price_raw ?? apiRaw.buyPrice ?? null,
+      yield_raw: dom.yield_raw ?? api?.yield_raw ?? apiRaw.buyYield ?? null,
+      currency: 'UAH',
+      raw_fields: {
+        ...apiRaw,
+        listed_on_bonds_page: true,
+        dom_maturity: dom.maturity_date || '',
+        dom_price: dom.price_raw || '',
+        dom_yield: dom.yield_raw || '',
+      },
+    });
+  }
+
+  const droppedApiOnlyCount = apiItems.filter(
+    (item) => !domIsins.has(normalizePrivatIsin(item.isin)),
+  ).length;
+
+  return {
+    proposals: processRawItems(mergedRaw),
+    domCount: mergedRaw.length,
+    apiCount: apiItems.length,
+    droppedApiOnlyCount,
+    xref: parsed.xref || null,
+    apiError: parsed.error || null,
+  };
+}
+
 module.exports = {
   CATALOG_URL,
   EXTRACT_BONDS_LIST_JS,
   PREPARE_BONDS_LIST_JS,
+  FETCH_BARGAINING_BONDS_JS,
+  FETCH_AUTH_BARGAINING_BONDS_JS,
+  processApiCatalogResult,
+  mergeDomWithApiCatalog,
   privatPurchaseUrl,
   processRawItems,
 };

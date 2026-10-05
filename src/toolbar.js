@@ -72,7 +72,8 @@ forwardBtn.addEventListener('click', () => window.inzhurShell?.goForward());
 reloadBtn.addEventListener('click', () => window.inzhurShell?.reload());
 brandBtn?.addEventListener('click', () => window.inzhurShell?.goCabinet());
 catalogBtn.addEventListener('click', () => window.inzhurShell?.goInzhurSignin());
-univerBtn.addEventListener('click', () => window.inzhurShell?.goUniverCatalog());
+univerBtn.addEventListener('click', () => window.inzhurShell?.goUniverToolbar?.()
+  || window.inzhurShell?.goUniverCatalog());
 privatBtn.addEventListener('click', () => window.inzhurShell?.goPrivatBonds());
 
 catalogBtn.addEventListener('contextmenu', (event) => {
@@ -82,7 +83,7 @@ catalogBtn.addEventListener('contextmenu', (event) => {
 
 univerBtn.addEventListener('contextmenu', (event) => {
   event.preventDefault();
-  window.inzhurShell?.goUniverCabinet();
+  window.inzhurShell?.goUniverCatalog();
 });
 
 privatBtn.addEventListener('contextmenu', (event) => {

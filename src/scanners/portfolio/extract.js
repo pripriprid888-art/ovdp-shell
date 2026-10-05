@@ -12,10 +12,22 @@ const EXTRACT_PORTFOLIO_JS = `(() => {
     return Number.isFinite(n) && n > 0 ? n : null;
   }
 
+  function lotKey(partial) {
+    return [
+      partial.isin,
+      partial.purchase_date || '',
+      partial.asset_id || partial.raw_fields?.productid || '',
+      partial.quantity ?? '',
+      partial.current_value || '',
+    ].join('|');
+  }
+
   function addItem(partial) {
     const isin = partial.isin;
-    if (!isin || seen.has(isin)) return;
-    seen.add(isin);
+    if (!isin) return;
+    const key = lotKey(partial);
+    if (seen.has(key)) return;
+    seen.add(key);
     items.push(partial);
   }
 
@@ -43,6 +55,7 @@ const EXTRACT_PORTFOLIO_JS = `(() => {
         || fields.quantity,
       ),
       nominal_value: fields['номінал'] || fields['номінальна вартість'] || null,
+      purchase_date: fields['дата купівлі'] || fields['дата покупки'] || fields['дата придбання'] || null,
       current_value: fields['вартість']
         || fields['сума']
         || fields['поточна вартість']
@@ -69,6 +82,8 @@ const EXTRACT_PORTFOLIO_JS = `(() => {
       h.includes('сума') || h.includes('варт') || h.includes('amount') || h.includes('balance'));
     const yieldIdx = headers.findIndex((h) => h.includes('дохід') || h.includes('yield'));
     const matIdx = headers.findIndex((h) => h.includes('погаш') || h.includes('maturity'));
+    const purchaseIdx = headers.findIndex((h) =>
+      /дата\s*(куп|покуп|придб|операц)/i.test(h) || h.includes('purchase') || h.includes('buy date'));
     const nameIdx = headers.findIndex((h) =>
       h.includes('назв') || h.includes('name') || h.includes('папір') || h.includes('security'));
 
@@ -85,6 +100,7 @@ const EXTRACT_PORTFOLIO_JS = `(() => {
         isin: isinMatch[0],
         title: nameIdx >= 0 ? cells[nameIdx] : (cells[0] !== isinMatch[0] ? cells[0] : null),
         quantity: qtyIdx >= 0 ? parseQuantity(cells[qtyIdx]) : null,
+        purchase_date: purchaseIdx >= 0 ? cells[purchaseIdx] : null,
         current_value: sumIdx >= 0 ? cells[sumIdx] : null,
         yield_percent: yieldIdx >= 0 ? cells[yieldIdx] : null,
         maturity_date: matIdx >= 0 ? cells[matIdx] : null,

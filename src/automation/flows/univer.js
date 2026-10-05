@@ -1,10 +1,15 @@
 const automationLog = require('../logger');
 const { delay, waitForSelector, waitForCondition } = require('../hidden-window');
+const { loadUrlWithTimeout, waitForLoadStop } = require('../../shared/web-contents');
+const { CHECK_AUTH_UNIVER_BOOLEAN_JS } = require('../../session/univer-auth');
 
 const LOGIN_URL = 'https://univer.1b.app/client/login/';
 const CLIENT_HOME_URL = 'https://univer.1b.app/client/';
 const UAH_OVDP_CATALOG_URL = 'https://univer.1b.app/client/custompage/38/';
 const HEADLESS_AUTH_TIMEOUT_MS = 45000;
+const EXEC_UNIVER_TIMEOUT_MS = 20000;
+const EXEC_AUTH_CHECK_TIMEOUT_MS = 8000;
+const BUY_SESSION_READY_TIMEOUT_MS = 45000;
 
 const UNIVER_PAGE_JS = String.raw`(() => {
   function isLoginPath(url) {
@@ -64,15 +69,72 @@ const UNIVER_PAGE_JS = String.raw`(() => {
   };
 })()`;
 
+async function checkUniverAuthenticated(webContents) {
+  if (!webContents || webContents.isDestroyed()) return false;
+  await waitForLoadStop(webContents, 12000);
+  try {
+    const result = await Promise.race([
+      webContents.executeJavaScript(CHECK_AUTH_UNIVER_BOOLEAN_JS),
+      delay(EXEC_AUTH_CHECK_TIMEOUT_MS).then(() => {
+        throw new Error('UNIVER: таймаут перевірки сесії');
+      }),
+    ]);
+    return Boolean(result);
+  } catch {
+    return false;
+  }
+}
+
 async function execUniver(webContents, method, ...args) {
+  if (!webContents || webContents.isDestroyed()) {
+    throw new Error('UNIVER: сторінка закрита');
+  }
+
+  if (method === 'isAuthenticated') {
+    return checkUniverAuthenticated(webContents);
+  }
+
+  await waitForLoadStop(webContents, 12000);
+
   const payload = args.length ? JSON.stringify(args) : '';
   const call = payload
     ? `api.${method}(...${payload})`
     : `api.${method}()`;
-  return webContents.executeJavaScript(`(() => {
+  const script = `(() => {
     const api = ${UNIVER_PAGE_JS};
     return ${call};
-  })()`);
+  })()`;
+
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`UNIVER: таймаут операції (${method})`)),
+      EXEC_UNIVER_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([webContents.executeJavaScript(script), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function ensureUniverBuyReady(webContents) {
+  await loadUrlWithTimeout(webContents, CLIENT_HOME_URL, BUY_SESSION_READY_TIMEOUT_MS);
+
+  const authenticated = await waitForCondition(
+    webContents,
+    CHECK_AUTH_UNIVER_BOOLEAN_JS,
+    30000,
+    800,
+  );
+
+  if (!authenticated) {
+    throw new Error('Сесія UNIVER недійсна — увійдіть знову');
+  }
+
+  await ensureClientHome(webContents);
 }
 
 async function ensureClientHome(webContents) {
@@ -99,24 +161,30 @@ async function ensureClientHome(webContents) {
 }
 
 async function waitForUniverAuth(webContents, timeoutMs = HEADLESS_AUTH_TIMEOUT_MS) {
-  const deadline = Date.now() + timeoutMs;
+  const authenticated = await waitForCondition(
+    webContents,
+    CHECK_AUTH_UNIVER_BOOLEAN_JS,
+    timeoutMs,
+    800,
+  );
 
-  while (Date.now() < deadline) {
-    const errorText = await execUniver(webContents, 'loginErrorMessage');
-    if (errorText) {
-      throw new Error(`UNIVER: ${errorText}`);
-    }
-
-    if (await execUniver(webContents, 'isAuthenticated')) {
-      automationLog.push('info', 'univer', 'Вхід у UNIVER підтверджено');
-      await ensureClientHome(webContents);
-      return;
-    }
-
-    await delay(1500);
+  if (authenticated) {
+    automationLog.push('info', 'univer', 'Вхід у UNIVER підтверджено');
+    await ensureClientHome(webContents);
+    return;
   }
 
-  if (await execUniver(webContents, 'isAuthenticated')) {
+  let errorText = null;
+  try {
+    errorText = await execUniver(webContents, 'loginErrorMessage');
+  } catch {
+    // page may be mid-navigation
+  }
+  if (errorText) {
+    throw new Error(`UNIVER: ${errorText}`);
+  }
+
+  if (await checkUniverAuthenticated(webContents)) {
     await ensureClientHome(webContents);
     return;
   }
@@ -126,10 +194,10 @@ async function waitForUniverAuth(webContents, timeoutMs = HEADLESS_AUTH_TIMEOUT_
 
 async function runUniverHeadlessSignIn(webContents, username, password) {
   automationLog.push('info', 'univer', 'UNIVER: фоновий вхід');
-  await webContents.loadURL(LOGIN_URL);
+  await loadUrlWithTimeout(webContents, LOGIN_URL, HEADLESS_AUTH_TIMEOUT_MS);
   await waitForSelector(webContents, 'input[name="login"]', 20000);
 
-  if (await execUniver(webContents, 'isAuthenticated')) {
+  if (await checkUniverAuthenticated(webContents)) {
     automationLog.push('info', 'univer', 'Сесію UNIVER вже активовано');
     return { authenticated: true, reused: true };
   }
@@ -145,8 +213,11 @@ async function runUniverHeadlessSignIn(webContents, username, password) {
 }
 
 async function gotoUniverCatalog(webContents) {
-  await webContents.loadURL(UAH_OVDP_CATALOG_URL);
-  await waitForSelector(webContents, '.js-product-table .js-client-buy-action', 30000);
+  await loadUrlWithTimeout(webContents, UAH_OVDP_CATALOG_URL, BUY_SESSION_READY_TIMEOUT_MS);
+  const found = await waitForSelector(webContents, '.js-product-table .js-client-buy-action', 30000);
+  if (!found) {
+    throw new Error('Каталог UNIVER не завантажився — спробуйте ще раз');
+  }
 }
 
 module.exports = {
@@ -155,4 +226,5 @@ module.exports = {
   runUniverHeadlessSignIn,
   gotoUniverCatalog,
   execUniver,
+  ensureUniverBuyReady,
 };

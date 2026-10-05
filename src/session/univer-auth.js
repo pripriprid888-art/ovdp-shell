@@ -36,15 +36,15 @@ const CHECK_AUTH_UNIVER_BOOLEAN_JS = String.raw`(() => {
 
 function getVerifyPollConfig(siteId) {
   if (siteId === 'privat') {
-    return { attempts: 20, initialDelayMs: 1500, pollDelayMs: 800 };
+    return { attempts: 12, initialDelayMs: 500, pollDelayMs: 600 };
   }
   if (siteId === 'univer') {
-    return { attempts: 20, initialDelayMs: 1500, pollDelayMs: 800 };
+    return { attempts: 12, initialDelayMs: 500, pollDelayMs: 600 };
   }
   if (siteId === 'inzhur') {
-    return { attempts: 8, initialDelayMs: 1500, pollDelayMs: 700 };
+    return { attempts: 8, initialDelayMs: 500, pollDelayMs: 500 };
   }
-  return { attempts: 3, initialDelayMs: 1200, pollDelayMs: 600 };
+  return { attempts: 3, initialDelayMs: 500, pollDelayMs: 400 };
 }
 
 module.exports = {

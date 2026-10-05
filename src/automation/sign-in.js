@@ -1,19 +1,8 @@
 const automationLog = require('./logger');
+const { waitForSelector: waitForSelectorCount } = require('../shared/web-contents');
 
 async function waitForSelector(webContents, selector, timeoutMs = 30000) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    const count = await webContents.executeJavaScript(
-      `document.querySelectorAll(${JSON.stringify(selector)}).length`,
-    );
-    if (count > 0) return true;
-    await delay(400);
-  }
-  return false;
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return waitForSelectorCount(webContents, selector, timeoutMs) > 0;
 }
 
 function setInputValue(selector, value) {
@@ -28,27 +17,9 @@ function setInputValue(selector, value) {
   })()`;
 }
 
-async function autoSignInInzhur(webContents, username, password) {
-  automationLog.push('info', 'inzhur', 'Заповнюємо телефон і пароль…');
-  await waitForSelector(webContents, 'input[name="login"]');
-  await webContents.executeJavaScript(setInputValue('input[name="login"]', username));
-  await webContents.executeJavaScript(setInputValue('input[name="password"]', password));
-
-  const clicked = await webContents.executeJavaScript(`(() => {
-    const btn = [...document.querySelectorAll('button.row-btn, button[type="submit"], button')]
-      .find((el) => /Отримати код з SMS/i.test(el.innerText || ''));
-    if (btn) { btn.click(); return true; }
-    return false;
-  })()`);
-
-  automationLog.push(
-    'warning',
-    'inzhur',
-    clicked
-      ? 'Натиснуто «Отримати код з SMS» — завершіть reCAPTCHA/SMS на сторінці.'
-      : 'Підтвердіть reCAPTCHA та SMS вручну, потім натисніть кнопку входу на сайті.',
-  );
-  return { filled: true, submitted: clicked };
+async function autoSignInInzhur(webContents, username, password, options = {}) {
+  const { runInzhurApiSignIn } = require('./flows/inzhur-signin');
+  return runInzhurApiSignIn(webContents, username, password, options);
 }
 
 async function autoSignInUniver(webContents, username, password) {
@@ -86,8 +57,8 @@ async function autoSignInPrivat(webContents, username, password) {
   return { filled: true, submitted: false };
 }
 
-async function runAutoSignIn(webContents, siteId, username, password) {
-  if (siteId === 'inzhur') return autoSignInInzhur(webContents, username, password);
+async function runAutoSignIn(webContents, siteId, username, password, options = {}) {
+  if (siteId === 'inzhur') return autoSignInInzhur(webContents, username, password, options);
   if (siteId === 'univer') return autoSignInUniver(webContents, username, password);
   if (siteId === 'privat') return autoSignInPrivat(webContents, username, password);
   throw new Error(`Auto sign-in not supported for ${siteId}`);

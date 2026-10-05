@@ -10,16 +10,12 @@ contextBridge.exposeInMainWorld('inzhurShell', {
   goSignin: () => ipcRenderer.invoke('go-signin'),
   goInzhurSignin: () => ipcRenderer.invoke('go-inzhur-signin'),
   goInzhurDashboard: () => ipcRenderer.invoke('go-inzhur-dashboard'),
-  setInzhurOverlayCollapsed: (collapsed) =>
-    ipcRenderer.invoke('set-inzhur-overlay-collapsed', collapsed),
-  getInzhurOverlayState: () => ipcRenderer.invoke('get-inzhur-overlay-state'),
-  setInzhurPageTheme: (themeId) => ipcRenderer.invoke('set-inzhur-page-theme', themeId),
-  cycleInzhurPageTheme: () => ipcRenderer.invoke('cycle-inzhur-page-theme'),
   goUniverSignin: () => ipcRenderer.invoke('go-univer-signin'),
   goUniverCabinet: () => ipcRenderer.invoke('go-univer-cabinet'),
   goUniverPortfolio: () => ipcRenderer.invoke('go-univer-portfolio'),
   goCatalog: () => ipcRenderer.invoke('go-catalog'),
   goUniverCatalog: () => ipcRenderer.invoke('go-univer-catalog'),
+  goUniverToolbar: () => ipcRenderer.invoke('go-univer-toolbar'),
   goPrivatCatalog: () => ipcRenderer.invoke('go-privat-catalog'),
   goPrivatBonds: () => ipcRenderer.invoke('go-privat-bonds'),
   openCatalog: (siteId) => ipcRenderer.invoke('open-catalog', siteId),
@@ -41,10 +37,32 @@ contextBridge.exposeInMainWorld('inzhurShell', {
   scanInzhurPortfolio: () => ipcRenderer.invoke('scan-inzhur-portfolio'),
   scanUniverPortfolio: () => ipcRenderer.invoke('scan-univer-portfolio'),
   scanUniverOrders: () => ipcRenderer.invoke('scan-univer-orders'),
+  downloadUniverOrderPdf: (orderId, documentId) =>
+    ipcRenderer.invoke('download-univer-order-pdf', orderId, documentId),
+  cancelUniverOrder: (orderId) => ipcRenderer.invoke('cancel-univer-order', orderId),
   scanPrivatPortfolio: () => ipcRenderer.invoke('scan-privat-portfolio'),
+  getPrivatCommissions: (isin, quantity, source) =>
+    ipcRenderer.invoke('get-privat-commissions', isin, quantity, source),
+  beginUniverTopUpPrivat: (options) =>
+    ipcRenderer.invoke('begin-univer-topup-privat', options || {}),
+  confirmUniverTopUpPrivat: (options) =>
+    ipcRenderer.invoke('confirm-univer-topup-privat', options || {}),
+  cancelUniverTopUpPrivat: () => ipcRenderer.invoke('cancel-univer-topup-privat'),
+  getPrivatPaymentCards: () => ipcRenderer.invoke('get-privat-payment-cards'),
+  onPrivatPaymentCards: (callback) => {
+    ipcRenderer.on('privat-payment-cards', (_event, payload) => callback(payload));
+  },
+  onPrivatPaymentStep: (callback) => {
+    ipcRenderer.on('privat-payment-step', (_event, payload) => callback(payload));
+  },
+  onShellTopUpMode: (callback) => {
+    ipcRenderer.on('shell-topup-mode', (_event, payload) => callback(payload));
+  },
   scanAllPortfolios: () => ipcRenderer.invoke('scan-all-portfolios'),
   scanPortfolio: (siteId) => ipcRenderer.invoke('scan-portfolio', siteId),
   getSecurities: (siteFilter, listKind) => ipcRenderer.invoke('get-securities', siteFilter, listKind),
+  getNbuReference: () => ipcRenderer.invoke('get-nbu-reference'),
+  refreshNbuReference: () => ipcRenderer.invoke('refresh-nbu-reference'),
   getSessionStates: () => ipcRenderer.invoke('get-session-states'),
   verifySession: (siteId) => ipcRenderer.invoke('verify-session', siteId),
   clearSession: (siteId) => ipcRenderer.invoke('clear-session', siteId),
@@ -68,7 +86,9 @@ contextBridge.exposeInMainWorld('inzhurShell', {
   deleteCredentials: (username) => ipcRenderer.invoke('delete-credentials', username),
   deleteSiteCredentials: (siteId, username) =>
     ipcRenderer.invoke('delete-site-credentials', siteId, username),
-  getAutomationLog: () => ipcRenderer.invoke('get-automation-log'),
+  getAutomationLog: (options) => ipcRenderer.invoke('get-automation-log', options || {}),
+  getAutomationLogDates: () => ipcRenderer.invoke('get-automation-log-dates'),
+  getLoggingConfig: () => ipcRenderer.invoke('get-logging-config'),
   clearAutomationLog: () => ipcRenderer.invoke('clear-automation-log'),
   runSignIn: (siteId, mode, username, password) =>
     ipcRenderer.invoke('run-sign-in', siteId, mode, username, password),
@@ -82,6 +102,12 @@ contextBridge.exposeInMainWorld('inzhurShell', {
     ipcRenderer.invoke('submit-automation-otp', runId, code),
   cancelAutomationOtp: (runId) =>
     ipcRenderer.invoke('cancel-automation-otp', runId),
+  getGmailOAuthStatus: () => ipcRenderer.invoke('get-gmail-oauth-status'),
+  startGmailOAuth: () => ipcRenderer.invoke('start-gmail-oauth'),
+  disconnectGmailOAuth: () => ipcRenderer.invoke('disconnect-gmail-oauth'),
+  onGmailOAuthStatus: (callback) => {
+    ipcRenderer.on('gmail-oauth-status', (_event, payload) => callback(payload));
+  },
   onCalculatorState: (callback) => {
     ipcRenderer.on('calculator-state', (_event, isOpen) => callback(isOpen));
   },
@@ -93,6 +119,9 @@ contextBridge.exposeInMainWorld('inzhurShell', {
   },
   onSecuritiesUpdated: (callback) => {
     ipcRenderer.on('securities-updated', (_event, data) => callback(data));
+  },
+  onNbuReferenceUpdated: (callback) => {
+    ipcRenderer.on('nbu-reference-updated', (_event, data) => callback(data));
   },
   onScanState: (callback) => {
     ipcRenderer.on('scan-state', (_event, state) => callback(state));
@@ -109,9 +138,6 @@ contextBridge.exposeInMainWorld('inzhurShell', {
   onHomeState: (callback) => {
     ipcRenderer.on('home-state', (_event, state) => callback(state));
   },
-  onInzhurOverlayState: (callback) => {
-    ipcRenderer.on('inzhur-overlay-state', (_event, state) => callback(state));
-  },
   onPanelTab: (callback) => {
     ipcRenderer.on('panel-tab', (_event, tabId) => callback(tabId));
   },
@@ -124,8 +150,17 @@ contextBridge.exposeInMainWorld('inzhurShell', {
   onAutomationOtpRequest: (callback) => {
     ipcRenderer.on('automation-otp-request', (_event, payload) => callback(payload));
   },
+  onAutomationOtpAuto: (callback) => {
+    ipcRenderer.on('automation-otp-auto', (_event, payload) => callback(payload));
+  },
+  onShellOtpMode: (callback) => {
+    ipcRenderer.on('shell-otp-mode', (_event, payload) => callback(payload));
+  },
   onAutomationBuyProgress: (callback) => {
     ipcRenderer.on('automation-buy-progress', (_event, payload) => callback(payload));
+  },
+  onPendingUniverOrder: (callback) => {
+    ipcRenderer.on('pending-univer-order', (_event, payload) => callback(payload));
   },
   onOnboardingState: (callback) => {
     ipcRenderer.on('onboarding-state', (_event, state) => callback(state));

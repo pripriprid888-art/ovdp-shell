@@ -1,5 +1,10 @@
 const { processPortfolioItems } = require('./process');
 const { EXTRACT_UNIVER_BALANCE_JS } = require('./univer-balance');
+const {
+  UNIVER_PAYMENT_ADD_URL,
+  EXTRACT_UNIVER_PAYMENT_INFO_JS,
+  enrichPaymentInfo,
+} = require('./univer-payment-info');
 const { scanUniverHoldings, PORTFOLIO_URL } = require('./univer-portfolio-scan');
 
 const UNIVER_BASE = 'https://univer.1b.app';
@@ -18,6 +23,10 @@ module.exports = {
   balanceUrl: BALANCE_URL,
   balancePrepareDelayMs: 3000,
   extractBalanceJs: EXTRACT_UNIVER_BALANCE_JS,
+  paymentInfoUrl: UNIVER_PAYMENT_ADD_URL,
+  paymentInfoPrepareDelayMs: 2500,
+  extractPaymentInfoJs: EXTRACT_UNIVER_PAYMENT_INFO_JS,
+  enrichPaymentInfo,
   portfolioUrl: PORTFOLIO_URL,
   waitSelector: 'table, a[href*="/client/"], tr[data-productid], main, .content, #content',
   preparePage: null,

@@ -16,8 +16,18 @@ function formatPctCompact(value) {
   return `${n.toLocaleString('uk-UA', { maximumFractionDigits: 4, minimumFractionDigits: 0 })} %`;
 }
 
-function isPrivatCatalogBond(bond) {
-  return bond?.site_id === 'privat' && bond?.kind !== 'holding';
+function isCatalogBondMissingListedYield(bond) {
+  if (typeof PlatformRegistry !== 'undefined') {
+    return PlatformRegistry.isCatalogBondMissingListedYield(bond);
+  }
+  return bond?.kind !== 'holding' && bond?.site_id === 'privat';
+}
+
+function isCatalogBondMissingBuyPrice(bond) {
+  if (typeof PlatformRegistry !== 'undefined') {
+    return PlatformRegistry.isCatalogBondMissingBuyPrice(bond);
+  }
+  return bond?.kind !== 'holding' && bond?.site_id === 'privat';
 }
 
 /** Catalog yield strings — preserves % suffix, compacts the number. */
@@ -38,24 +48,34 @@ function parseBondMoney(value) {
 }
 
 function formatYieldForBond(bond) {
-  if (isPrivatCatalogBond(bond) && (bond?.yield_percent == null || bond?.yield_percent === '')) {
+  if (isCatalogBondMissingListedYield(bond) && (bond?.yield_percent == null || bond?.yield_percent === '')) {
     return '—';
   }
   return formatYieldDisplay(bond?.yield_percent);
 }
 
+function resolveBondUnitPriceUah(bond) {
+  const calc = bond?.calculator;
+  const nominal = calc?.nominal ?? parseBondMoney(bond?.nominal_value) ?? 1000;
+  if (typeof BondCalculator !== 'undefined' && BondCalculator.resolveUnitBuyPrice) {
+    const unit = BondCalculator.resolveUnitBuyPrice(bond, nominal);
+    if (unit != null) return unit;
+  }
+  return parseBondMoney(bond?.buy_price);
+}
+
 function formatBondCostUah(bond) {
-  if (isPrivatCatalogBond(bond) && parseBondMoney(bond?.buy_price) == null) {
+  if (isCatalogBondMissingBuyPrice(bond) && parseBondMoney(bond?.buy_price) == null) {
     return '—';
   }
 
-  const fromBuy = parseBondMoney(bond?.buy_price);
-  if (fromBuy != null) {
+  const unitPrice = resolveBondUnitPriceUah(bond);
+  if (unitPrice != null) {
     return new Intl.NumberFormat('uk-UA', {
       style: 'currency',
       currency: 'UAH',
       maximumFractionDigits: 2,
-    }).format(fromBuy);
+    }).format(unitPrice);
   }
 
   const calc = bond?.calculator;
@@ -95,4 +115,26 @@ function formatMaturityDate(value) {
   }
   const trimmed = String(value ?? '').trim();
   return trimmed || '—';
+}
+
+const BondFormat = {
+  parsePctNumber,
+  formatPctCompact,
+  isCatalogBondMissingListedYield,
+  isCatalogBondMissingBuyPrice,
+  formatYieldDisplay,
+  parseBondMoney,
+  formatYieldForBond,
+  formatBondCostUah,
+  bondCostMetaHtml,
+  formatAccountBalanceUah,
+  formatMaturityDate,
+};
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = BondFormat;
+}
+
+if (typeof window !== 'undefined') {
+  window.BondFormat = BondFormat;
 }

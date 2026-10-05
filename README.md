@@ -55,7 +55,7 @@ src/
   main.js           Electron main process, IPC, scans
   preload.js        Renderer ↔ main bridge
   shell.html        Cabinet UI shell
-  sidepanel.js      Catalog / portfolio lists
+  bond-list.js      Catalog / portfolio lists
   desk-ui.js        Buy drawer, balance strip
   scanners/         Inzhur, UNIVER, Privat catalog & portfolio
   automation/       Sign-in, purchase routes, UNIVER buy
@@ -70,6 +70,75 @@ assets/             App icon
 |---------|-------------|
 | `npm start` | Run the app |
 | `npm run dev` | Same as `npm start` |
+| `npm run pack` | Unpacked `.app` in `dist/mac-*` (quick smoke test) |
+| `npm run dist:mac` | macOS **DMG** + **ZIP** in `dist/` |
+| `npm run dist:win` | Windows **NSIS** installer (`dist/OVDP-Shell-Setup-<version>.exe`) |
+
+### macOS installer
+
+```bash
+npm install
+cp .env.production.example .env.production   # fill Neon / AWS vars for the shipped app
+npm run dist:mac
+```
+
+`predist:mac` copies `.env.production` (or `.env` if production is missing) into the app as `Contents/Resources/.env`. The packaged app loads that on startup (`src/config/load-env.js`).
+
+Open `dist/OVDP Shell-<version>.dmg`, drag **OVDP Shell** to Applications.
+
+The build is **unsigned** unless you configure Apple code signing (`CSC_LINK` / `CSC_KEY_PASSWORD` in the environment). Unsigned builds may show Gatekeeper “cannot be opened” — right‑click → Open, or System Settings → Privacy & Security → Open Anyway.
+
+### Windows installer
+
+```bash
+npm install
+npm run dist:win
+```
+
+This uses the same bundled env as the macOS build (`.env.production`, or `.env`). The installer is `dist/OVDP-Shell-Setup-<version>.exe` (NSIS, per-user by default, install folder can be changed, desktop and Start menu shortcuts).
+
+Building the `.exe` on macOS needs [Wine](https://www.winehq.org/). On Windows, `npm run dist:win` is enough. The installer is unsigned unless you set a Windows code-signing certificate (`CSC_LINK` / `WIN_CSC_LINK`).
+
+User data after install is `%APPDATA%\inzhur-shell`.
+
+**Security:** bundled env contains live credentials — anyone can extract them from the `.dmg`. Use Neon branch credentials with least privilege; never ship production DB keys you cannot rotate.
+
+User data after install is still `~/Library/Application Support/inzhur-shell/` (same as dev).
+
+## Neon (action log / history)
+
+**Журнал дій** is shown from local `action-log.json` (full detail including expandable context). Each new entry is also **inserted into Postgres** (`action_log_entries`) when `DATABASE_URL` is set — **without** `context` (only `id`, `at`, `level`, `site_id`, `message`, `kind`, `category`, `run_id`, `error_message`).
+
+Apply the table once: `npm run db:schema` (uses `scripts/neon-schema.sql`).
+
+One-time project setup (from repo root):
+
+```bash
+npm i -g neon@latest && neon login   # or use `npx neon` without global install
+npx neon skills -y
+npx neon mcp -y                      # optional: Neon MCP in Cursor
+npx neon link --project-id polished-smoke-90919972 --branch production
+npx neon config init                 # installs @neon/env; keeps existing neon.ts
+npm run neon:deploy                  # provisions buckets, refreshes .env AWS_* vars
+```
+
+`neon.ts` declares the bucket:
+
+```ts
+import { defineConfig } from "@neon/config/v1";
+
+export default defineConfig({
+  buckets: {
+    "ovdp-history": { access: "private" },
+  },
+});
+```
+
+After `neon link` / `neon deploy`, `.env` contains `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_ENDPOINT_URL_S3`, and `AWS_REGION` (gitignored). Restart the app so the main process loads them.
+
+Optional Postgres (`DATABASE_URL`) and `npm run db:ping` remain for SQL use; **logs use Object Storage**, not Postgres.
+
+**Do not** commit `.env` or put broker passwords in Neon.
 
 ## Security
 

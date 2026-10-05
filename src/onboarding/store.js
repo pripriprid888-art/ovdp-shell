@@ -12,7 +12,7 @@ function getStorePath() {
 function defaultSiteState() {
   return {
     inzhur: { enabled: false, username: '' },
-    univer: { enabled: false, username: '' },
+    univer: { enabled: false, username: '', signInOnLaunch: false, topUpContract: '', topUpIban: '' },
     privat: {
       enabled: false,
       username: '',
@@ -59,7 +59,16 @@ function getOnboardingState() {
   };
 }
 
-function setSiteConfig(siteId, { enabled, username, paymentAccounts, lastPaymentAccount } = {}) {
+function setSiteConfig(siteId, {
+  enabled,
+  username,
+  paymentAccounts,
+  lastPaymentAccount,
+  signInOnLaunch,
+  topUpContract,
+  topUpIban,
+  topUpQuery,
+} = {}) {
   if (!SITE_IDS.includes(siteId)) return getOnboardingState();
   const data = readRaw();
   data.sites[siteId] = {
@@ -68,6 +77,18 @@ function setSiteConfig(siteId, { enabled, username, paymentAccounts, lastPayment
     ...(username !== undefined ? { username: String(username || '').trim() } : {}),
     ...(paymentAccounts !== undefined ? { paymentAccounts: String(paymentAccounts || '').trim() } : {}),
     ...(lastPaymentAccount !== undefined ? { lastPaymentAccount: String(lastPaymentAccount || '').trim() } : {}),
+    ...(signInOnLaunch !== undefined ? { signInOnLaunch: Boolean(signInOnLaunch) } : {}),
+    ...(topUpContract !== undefined ? { topUpContract: String(topUpContract || '').trim() } : {}),
+    ...(topUpIban !== undefined ? { topUpIban: String(topUpIban || '').trim() } : {}),
+    ...(topUpQuery !== undefined ? {
+      topUpQuery: String(topUpQuery || '').trim(),
+      ...(topUpContract === undefined && topUpQuery && !String(topUpQuery).startsWith('UA')
+        ? { topUpContract: String(topUpQuery).trim() }
+        : {}),
+      ...(topUpIban === undefined && topUpQuery && String(topUpQuery).startsWith('UA')
+        ? { topUpIban: String(topUpQuery).trim() }
+        : {}),
+    } : {}),
   };
   writeRaw(data);
   return getOnboardingState();

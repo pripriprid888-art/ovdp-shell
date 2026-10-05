@@ -239,10 +239,24 @@ const EXTRACT_UNIVER_PORTFOLIO_JS = `(() => {
     return Number.isFinite(n) ? n : null;
   }
 
+  function lotKey(partial, isin) {
+    return [
+      isin,
+      partial.raw_fields?.source || '',
+      partial.raw_fields?.row_index ?? '',
+      partial.raw_fields?.productid || '',
+      partial.purchase_date || '',
+      partial.quantity ?? '',
+      partial.current_value || '',
+    ].join('|');
+  }
+
   function addItem(partial) {
     const isin = partial.isin?.match(ISIN_RE)?.[0];
-    if (!isin || seen.has(isin)) return;
-    seen.add(isin);
+    if (!isin) return;
+    const key = lotKey(partial, isin);
+    if (seen.has(key)) return;
+    seen.add(key);
     items.push({ ...partial, isin });
   }
 
@@ -258,24 +272,37 @@ const EXTRACT_UNIVER_PORTFOLIO_JS = `(() => {
   }
 
   function extractOsTable(doc) {
+    let rowIndex = 0;
     for (const tr of doc.querySelectorAll('table.os-table tbody tr')) {
       const isinRaw = cellText(tr, 'cusstomproduct_ISIN');
       const isinMatch = isinRaw.match(ISIN_RE);
       if (!isinMatch) continue;
+      rowIndex += 1;
 
       const qtyRaw = cellText(tr, 'productcount');
       const qty = parseDecimalQty(qtyRaw);
+      const productId = tr.getAttribute('data-productid')
+        || tr.getAttribute('data-orderid')
+        || cellText(tr, 'productid')
+        || null;
 
       addItem({
         isin: isinMatch[0],
         title: cellText(tr, 'productname') || null,
         quantity: qty,
+        purchase_date: cellText(tr, 'cusstomproduct_Datakupivli')
+          || cellText(tr, 'cusstomproduct_Datakupli')
+          || cellText(tr, 'cusstomproduct_Datatranzaktsii')
+          || cellText(tr, 'cusstomproduct_Datatranczaktsii')
+          || cellText(tr, 'cusstomproduct_Datasdelki')
+          || null,
         maturity_date: cellText(tr, 'cusstomproduct_Datapogashennya') || null,
         current_value: cellText(tr, 'cusstom_Suma_PP') || cellText(tr, 'cusstomproduct_TSnavikupUK') || null,
         yield_percent: cellText(tr, 'cusstomproduct_Dohdnstkupvlya') || null,
         raw_fields: {
           source: 'os-table',
-          productid: cellText(tr, 'productid') || null,
+          row_index: rowIndex,
+          productid: productId,
           category: cellText(tr, 'product_categoryname') || null,
           invested: cellText(tr, 'cusstom_Suma_PP') || null,
           buyback_price: cellText(tr, 'cusstomproduct_TSnavikupUK') || null,
@@ -308,6 +335,8 @@ const EXTRACT_UNIVER_PORTFOLIO_JS = `(() => {
     });
 
     doc.querySelectorAll('table').forEach((table) => {
+      if (table.classList.contains('os-table')) return;
+
       const headerCells = [...table.querySelectorAll('thead th, thead td, tr th')];
       const headers = headerCells.length
         ? headerCells.map((h) => h.innerText.replace(/\\s+/g, ' ').trim().toLowerCase())
@@ -319,6 +348,8 @@ const EXTRACT_UNIVER_PORTFOLIO_JS = `(() => {
         h.includes('сума') || h.includes('варт') || h.includes('amount') || h.includes('balance') || h.includes('номінал'));
       const yieldIdx = headers.findIndex((h) => h.includes('дохід') || h.includes('yield') || h.includes('ставк'));
       const matIdx = headers.findIndex((h) => h.includes('погаш') || h.includes('maturity') || h.includes('термін'));
+      const purchaseIdx = headers.findIndex((h) =>
+        /дата\s*(куп|покуп|придб|операц)/i.test(h) || h.includes('purchase') || h.includes('buy date'));
       const nameIdx = headers.findIndex((h) =>
         h.includes('назв') || h.includes('name') || h.includes('емітент') || h.includes('папір') || h.includes('security'));
 
@@ -335,6 +366,7 @@ const EXTRACT_UNIVER_PORTFOLIO_JS = `(() => {
           isin: isinMatch[0],
           title: nameIdx >= 0 ? cells[nameIdx] : cells.find((c) => c && !ISIN_RE.test(c) && c.length > 3) || null,
           quantity: qtyIdx >= 0 ? parseQuantity(cells[qtyIdx]) : parseQuantity(rowText),
+          purchase_date: purchaseIdx >= 0 ? cells[purchaseIdx] : null,
           current_value: sumIdx >= 0 ? cells[sumIdx] : null,
           yield_percent: yieldIdx >= 0 ? cells[yieldIdx] : null,
           maturity_date: matIdx >= 0 ? cells[matIdx] : null,
@@ -346,6 +378,8 @@ const EXTRACT_UNIVER_PORTFOLIO_JS = `(() => {
     });
 
     for (const row of doc.querySelectorAll('tr, [role="row"], .portfolio-row, .js-product-row, li, .w-dyn-item')) {
+      if (row.closest('table.os-table')) continue;
+
       const text = row.innerText.replace(/\\u00a0/g, ' ').replace(/\\s+/g, ' ').trim();
       const isinMatch = text.match(ISIN_RE);
       if (!isinMatch) continue;

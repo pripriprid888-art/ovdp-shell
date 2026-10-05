@@ -3,8 +3,7 @@ const { getSite, listSiteIds, inferAuthFromUrl } = require('../sites/config');
 const { getVerifyPollConfig } = require('./univer-auth');
 const automationLog = require('../automation/logger');
 
-const CHROME_USER_AGENT =
-  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const { CHROME_UA: CHROME_USER_AGENT } = require('../shared/constants');
 
 /** @type {Record<string, object>} */
 const sessionStates = {};
@@ -67,7 +66,7 @@ async function verifySiteSession(siteId) {
     message: 'Перевірка сесії…',
     verifyUrl: site.verifyUrl,
   });
-  automationLog.pushBackground('info', siteId, `Перевірка сесії: ${site.verifyUrl}`);
+  automationLog.pushBackground('info', siteId, `Перевірка сесії: ${site.verifyUrl}`, { category: 'session' });
 
   const cookieInfo = await countSiteCookies(siteId);
   const verifyWindow = new BrowserWindow({
@@ -121,6 +120,14 @@ async function verifySiteSession(siteId) {
         : cookieInfo.count > 0
           ? `Не авторизовано (${authResult?.reason || 'guest'}, cookies: ${cookieInfo.count} — збережені cookies ≠ активна сесія)`
           : `Не авторизовано (${authResult?.reason || 'guest'})`,
+      {
+        category: 'session',
+        context: {
+          authenticated,
+          reason: authResult?.reason || null,
+          cookieCount: cookieInfo.count,
+        },
+      },
     );
 
     let guestMessage = 'Не авторизовано';
@@ -142,7 +149,7 @@ async function verifySiteSession(siteId) {
       verifyUrl: finalUrl,
     });
   } catch (err) {
-    automationLog.pushBackground('error', siteId, `Перевірка сесії: ${err.message}`);
+    automationLog.logError(siteId, `Перевірка сесії: ${err.message}`, err, { category: 'session' });
     return setState(siteId, {
       status: 'guest',
       hasCookies: cookieInfo.count > 0,
@@ -173,6 +180,19 @@ function queueVerify(siteId) {
 async function verifyAllSessions() {
   for (const siteId of listSiteIds()) {
     await queueVerify(siteId);
+  }
+  return cloneStates();
+}
+
+function resetAllSessionsGuest(message = 'Увійдіть на платформу') {
+  for (const siteId of listSiteIds()) {
+    setState(siteId, {
+      status: 'guest',
+      hasCookies: false,
+      cookieCount: 0,
+      message,
+      verifyUrl: null,
+    });
   }
   return cloneStates();
 }
@@ -231,6 +251,7 @@ module.exports = {
   verifySiteSession,
   queueVerify,
   verifyAllSessions,
+  resetAllSessionsGuest,
   updateFromBrowserUrl,
   refreshCookieFlags,
   clearSiteSession,

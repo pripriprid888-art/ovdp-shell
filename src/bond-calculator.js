@@ -1,6 +1,12 @@
 /**
  * OVDP / bond hold-to-maturity calculator (browser + Node).
- * Coupon rate is inferred from schedules or titles — not from listed YTM.
+ *
+ * Data model:
+ * - Security (ISIN, nominal, NBU payment schedule) — shared across sellers.
+ * - Seller quote (site_id, unit buy price, listed yield) — per listing row.
+ * - Cash flows — future schedule rows only; coupon and principal kept separate.
+ *
+ * Coupon rate is inferred from schedules, NBU nominal yield, or titles — not from listed YTM.
  */
 
 function parsePrice(value) {
@@ -106,14 +112,72 @@ function inferCouponFromText(text) {
   return null;
 }
 
+function normalizeScheduleEntry(entry, nominal) {
+  const face = Math.max(0, Number(nominal) || 0);
+  const date = parseUkDate(entry?.date);
+  const explicitCoupon = parsePrice(entry?.coupon);
+  const explicitPrincipal = parsePrice(entry?.principal);
+  if (date && (explicitCoupon != null || explicitPrincipal != null)) {
+    return {
+      date,
+      coupon: Math.max(0, explicitCoupon ?? 0),
+      principal: Math.max(0, explicitPrincipal ?? 0),
+      paymentType: (explicitPrincipal ?? 0) > 0 ? 'maturity' : 'coupon',
+    };
+  }
+
+  const amount = parsePrice(entry?.amount);
+  const isMaturity = entry?.payment_type === 'maturity';
+  if (!date) return null;
+
+  if (!isMaturity) {
+    return {
+      date,
+      coupon: Math.max(0, amount ?? 0),
+      principal: 0,
+      paymentType: 'coupon',
+    };
+  }
+
+  if (amount != null && face > 0 && amount > face) {
+    return {
+      date,
+      coupon: amount - face,
+      principal: face,
+      paymentType: 'maturity',
+    };
+  }
+
+  const principal = amount != null && amount > 0 ? amount : face;
+  return {
+    date,
+    coupon: 0,
+    principal: Math.max(0, principal),
+    paymentType: 'maturity',
+  };
+}
+
+function normalizePaymentSchedule(schedule, nominal) {
+  if (!Array.isArray(schedule)) return [];
+  return schedule
+    .map((entry) => normalizeScheduleEntry(entry, nominal))
+    .filter(Boolean);
+}
+
+function filterFutureScheduleEntries(schedule, nominal, settle = new Date()) {
+  const settleDay = startOfDay(settle);
+  return normalizePaymentSchedule(schedule, nominal)
+    .filter((entry) => startOfDay(entry.date) > settleDay)
+    .sort((a, b) => a.date - b.date);
+}
+
 function inferCouponFromSchedule(proposal, nominal) {
   const schedule = proposal.payment_schedule;
   if (!Array.isArray(schedule) || !nominal) return null;
 
-  const couponAmounts = schedule
-    .filter((p) => p.payment_type === 'coupon')
-    .map((p) => parsePrice(p.amount))
-    .filter((n) => n != null && n > 0);
+  const couponAmounts = normalizePaymentSchedule(schedule, nominal)
+    .map((entry) => entry.coupon)
+    .filter((n) => n > 0);
 
   if (!couponAmounts.length) return null;
 
@@ -172,6 +236,16 @@ function resolveMaturityDate(inputs, settle) {
   return maturity;
 }
 
+function resolveMaturityFromSchedule(schedule) {
+  if (!Array.isArray(schedule) || !schedule.length) return null;
+  const dates = schedule
+    .map((entry) => parseUkDate(entry.date))
+    .filter(Boolean)
+    .map((date) => startOfDay(date));
+  if (!dates.length) return null;
+  return new Date(Math.max(...dates.map((date) => date.getTime())));
+}
+
 function buildCouponPaymentDates(settle, maturity, paymentsPerYear) {
   const monthsStep = Math.max(1, Math.round(12 / paymentsPerYear));
   const dates = [];
@@ -205,48 +279,47 @@ function buildCashFlows(inputs) {
   const faceTotal = nominal * quantity;
   const purchaseTotal = faceTotal * (pricePct / 100);
   const couponPerPayment = faceTotal * couponRate / 100 / paymentsPerYear;
-  const maturity = resolveMaturityDate(inputs, settle);
+  const schedule = Array.isArray(inputs.paymentSchedule) ? inputs.paymentSchedule : [];
+  const maturity = resolveMaturityDate(inputs, settle) || resolveMaturityFromSchedule(schedule);
   const flows = [];
 
-  const schedule = Array.isArray(inputs.paymentSchedule) ? inputs.paymentSchedule : [];
   if (schedule.length && maturity) {
-    const sorted = [...schedule]
-      .map((entry) => ({
-        date: parseUkDate(entry.date),
-        amount: parsePrice(entry.amount),
-        paymentType: entry.payment_type || 'coupon',
-      }))
-      .filter((entry) => entry.date && startOfDay(entry.date) > settle)
-      .sort((a, b) => a.date - b.date);
+    const sorted = filterFutureScheduleEntries(schedule, nominal, settle);
 
     for (const entry of sorted) {
-      let amount = entry.amount != null ? entry.amount * quantity : null;
-      if (amount == null) {
-        amount = entry.paymentType === 'maturity'
-          ? faceTotal
-          : couponPerPayment;
+      const couponPart = entry.coupon * quantity;
+      const principalPart = entry.principal * quantity;
+      const amount = couponPart + principalPart;
+      if (!(amount > 0)) continue;
+
+      let label = 'Купон';
+      let kind = 'coupon';
+      if (principalPart > 0 && couponPart > 0) {
+        label = 'Купон + номінал';
+        kind = 'final';
+      } else if (principalPart > 0) {
+        label = 'Номінал';
+        kind = 'final';
       }
+
       flows.push({
         date: entry.date,
         years: yearsAct365(settle, entry.date),
         amount,
-        label: entry.paymentType === 'maturity' ? 'Номінал' : 'Купон',
-        kind: entry.paymentType === 'maturity' ? 'final' : 'coupon',
+        couponPart,
+        principalPart,
+        label,
+        kind,
       });
     }
 
-    const maturityFlow = flows.find((flow) => flow.kind === 'final');
-    const lastCoupon = [...flows].reverse().find((flow) => flow.kind === 'coupon');
-    if (maturityFlow && lastCoupon && daysBetween(lastCoupon.date, maturityFlow.date) === 0) {
-      maturityFlow.amount += lastCoupon.amount;
-      maturityFlow.label = 'Купон + номінал';
-      const index = flows.indexOf(lastCoupon);
-      if (index >= 0) flows.splice(index, 1);
-    } else if (!maturityFlow) {
+    if (!flows.some((flow) => flow.principalPart > 0)) {
       flows.push({
         date: maturity,
         years: yearsAct365(settle, maturity),
         amount: faceTotal + couponPerPayment,
+        couponPart: couponPerPayment,
+        principalPart: faceTotal,
         label: 'Купон + номінал',
         kind: 'final',
       });
@@ -255,10 +328,14 @@ function buildCashFlows(inputs) {
     const dates = buildCouponPaymentDates(settle, maturity, paymentsPerYear);
     dates.forEach((date, index) => {
       const isLast = index === dates.length - 1;
+      const couponPart = couponPerPayment;
+      const principalPart = isLast ? faceTotal : 0;
       flows.push({
         date,
         years: yearsAct365(settle, date),
-        amount: couponPerPayment + (isLast ? faceTotal : 0),
+        amount: couponPart + principalPart,
+        couponPart,
+        principalPart,
         label: isLast ? 'Купон + номінал' : `Купон ${index + 1}`,
         kind: isLast ? 'final' : 'coupon',
       });
@@ -268,6 +345,8 @@ function buildCashFlows(inputs) {
       date: maturity,
       years: yearsAct365(settle, maturity),
       amount: faceTotal,
+      couponPart: 0,
+      principalPart: faceTotal,
       label: 'Погашення',
       kind: 'final',
     });
@@ -338,7 +417,10 @@ function computeProjection(inputs) {
   } = built;
 
   const annualCoupon = couponPerPayment * paymentsPerYear;
-  const totalCoupons = couponPerPayment * flows.length;
+  const totalCoupons = flows.reduce(
+    (sum, flow) => sum + (flow.couponPart != null ? flow.couponPart : 0),
+    0,
+  );
   const capitalGainAbs = faceTotal - purchaseTotal;
   const capitalGainPctOfPurchase = purchaseTotal > 0 ? (capitalGainAbs / purchaseTotal) * 100 : 0;
   const premiumDiscountPctOfNominal = faceTotal > 0 ? (capitalGainAbs / faceTotal) * 100 : 0;
@@ -438,7 +520,9 @@ function inferListedYieldType(proposal, fieldsOverride = null) {
 }
 
 function toCalculatorFields(proposal, nominalFallback = 1000) {
-  const isPrivatCatalog = proposal?.site_id === 'privat' && proposal?.kind !== 'holding';
+  const isPrivatCatalog = typeof PlatformRegistry !== 'undefined'
+    ? PlatformRegistry.isCatalogBondMissingBuyPrice(proposal)
+    : proposal?.site_id === 'privat' && proposal?.kind !== 'holding';
   const nominal = parsePrice(proposal.nominal_value) || nominalFallback;
   const years = yearsToMaturity(proposal.maturity_date) || 1;
   const payments = inferPaymentsPerYear(proposal);
@@ -452,6 +536,7 @@ function toCalculatorFields(proposal, nominalFallback = 1000) {
       listedYtm: null,
       couponFromListedYtm: false,
       pricePct: null,
+      unitPriceUah: null,
       years,
       payments,
       maturityDate: proposal.maturity_date || null,
@@ -462,25 +547,86 @@ function toCalculatorFields(proposal, nominalFallback = 1000) {
 
   const buyPrice = buyPriceEarly ?? resolveUnitBuyPrice(proposal, nominal);
   const quantity = Math.max(1, parseInt(proposal.quantity, 10) || 1);
+  const hasSchedule = Array.isArray(proposal.payment_schedule) && proposal.payment_schedule.length > 0;
   const inferredCoupon = inferCouponRate(proposal, nominal);
   const listedYtm = parseYield(proposal.yield_percent);
-  const couponRate = inferredCoupon ?? listedYtm ?? 0;
+  const nbuNominalYield = hasSchedule ? parseYield(proposal.nbu_reference?.nominal_yield) : null;
+  const couponRate = inferredCoupon ?? nbuNominalYield ?? 0;
   const pricePct = buyPrice && nominal ? (buyPrice / nominal) * 100 : 100;
   const fields = {
     nominal,
     quantity: proposal.kind === 'holding' ? quantity : 1,
     couponRate,
     listedYtm,
-    couponFromListedYtm: inferredCoupon == null && listedYtm != null && listedYtm > 0,
+    couponFromListedYtm: false,
+    couponFromNbuNominalYield: inferredCoupon == null && nbuNominalYield != null && nbuNominalYield > 0,
     pricePct,
+    unitPriceUah: buyPrice ?? null,
     years,
     payments,
     maturityDate: proposal.maturity_date || null,
     paymentSchedule: proposal.payment_schedule || null,
   };
+  const skipListedYieldType = typeof PlatformRegistry !== 'undefined'
+    ? !PlatformRegistry.catalogHasListedYield(proposal.site_id)
+    : proposal.site_id === 'privat';
   fields.listedYieldType = proposal.listed_yield_type
-    ?? (proposal.site_id === 'privat' ? null : inferListedYieldType(proposal, fields));
+    ?? (skipListedYieldType ? null : inferListedYieldType(proposal, fields));
   return fields;
+}
+
+function toCalculatorQuoteContext(proposal, options = {}) {
+  const nominalFallback = options.nominalFallback ?? 1000;
+  const fields = toCalculatorFields(proposal, nominalFallback);
+  const isin = String(proposal?.isin || '').trim().toUpperCase();
+  const siteId = proposal?.site_id || null;
+  const scheduleSource = options.scheduleSource || 'none';
+  return {
+    ...fields,
+    isin: isin || null,
+    siteId,
+    quoteKey: isin && siteId ? `${siteId}:${isin}` : null,
+    scheduleSource,
+    usesActualSchedule: scheduleSource !== 'none' && !!(fields.paymentSchedule?.length),
+  };
+}
+
+function sumScheduleReceipts(schedule, nominal, quantity, options = {}) {
+  const qty = Math.max(0, Number(quantity) || 0);
+  const settle = options.settle ?? new Date();
+  const entries = options.futureOnly
+    ? filterFutureScheduleEntries(schedule, nominal, settle)
+    : normalizePaymentSchedule(schedule, nominal);
+  return entries.reduce(
+    (sum, entry) => sum + (entry.coupon + entry.principal) * qty,
+    0,
+  );
+}
+
+function buildScheduleDisplayRows(schedule, nominal, quantity, settle = new Date()) {
+  const qty = Math.max(0, Number(quantity) || 0);
+  const rows = [];
+  for (const entry of filterFutureScheduleEntries(schedule, nominal, settle)) {
+    if (entry.coupon > 0) {
+      rows.push({
+        date: entry.date,
+        unitAmount: entry.coupon,
+        totalAmount: entry.coupon * qty,
+        label: 'Купон',
+        isMaturity: false,
+      });
+    }
+    if (entry.principal > 0) {
+      rows.push({
+        date: entry.date,
+        unitAmount: entry.principal,
+        totalAmount: entry.principal * qty,
+        label: 'Погашення',
+        isMaturity: true,
+      });
+    }
+  }
+  return rows;
 }
 
 const BondCalculator = {
@@ -492,6 +638,11 @@ const BondCalculator = {
   resolveUnitBuyPrice,
   inferPaymentsPerYear,
   inferCouponRate,
+  normalizeScheduleEntry,
+  normalizePaymentSchedule,
+  filterFutureScheduleEntries,
+  sumScheduleReceipts,
+  buildScheduleDisplayRows,
   buildCashFlows,
   calcYtmFromCashFlows,
   calcYTM,
@@ -499,6 +650,7 @@ const BondCalculator = {
   inferListedYieldType,
   normalizeListedYieldTypeLabel,
   toCalculatorFields,
+  toCalculatorQuoteContext,
 };
 
 if (typeof module !== 'undefined' && module.exports) {

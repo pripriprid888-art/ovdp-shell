@@ -1,4 +1,5 @@
 const BondCalculator = require('../bond-calculator');
+const { isCatalogBondMissingBuyPrice } = require('../sites/registry');
 
 function formatUah(value) {
   if (value == null || !Number.isFinite(value)) return null;
@@ -10,7 +11,7 @@ function formatUah(value) {
 }
 
 function formatBondCostUah(proposal) {
-  if (proposal?.site_id === 'privat' && proposal?.kind !== 'holding' && parsePrice(proposal.buy_price) == null) {
+  if (isCatalogBondMissingBuyPrice(proposal) && parsePrice(proposal.buy_price) == null) {
     return null;
   }
 

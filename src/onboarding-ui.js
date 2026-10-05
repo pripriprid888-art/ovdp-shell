@@ -5,7 +5,7 @@ const SITE_OPEN = {
 };
 
 const AUTH_HINTS = {
-  phone_password: 'Телефон і пароль. SMS або reCAPTCHA — у браузері.',
+  phone_password: 'Телефон і пароль. SMS-код — у браузері або модальному вікні.',
   password: 'Логін або email і пароль.',
   phone_otp: 'Телефон і пароль. Підтвердження в застосунку Приват24.',
 };
@@ -80,8 +80,9 @@ function updateSessionBadges() {
 
     const headlessBtn = card.querySelector('[data-action="signin-headless"]');
     const site = getSiteMeta(siteId);
+    const busy = busySites.has(siteId);
     if (headlessBtn) {
-      headlessBtn.disabled = site?.supportsHeadlessSignIn === false || busySites.has(siteId);
+      headlessBtn.disabled = site?.supportsHeadlessSignIn === false || busy;
     }
   });
 }
@@ -297,6 +298,35 @@ function renderPlatformForm(site) {
   const passwordFieldHidden = site.passwordRequired === false;
   const menuHtml = renderUsernameMenu(siteId, username);
   const paymentAccounts = onboardingState.sites.privat?.paymentAccounts || '';
+  const signInOnLaunch = onboardingState.sites.univer?.signInOnLaunch === true;
+  const topUpContract = onboardingState.sites.univer?.topUpContract
+    || onboardingState.sites.univer?.topUpQuery
+    || '';
+  const signInOnLaunchBlock = siteId === 'univer' ? `
+      <div class="platform-form-launch">
+        <label class="platform-form-launch-label">
+          <input
+            type="checkbox"
+            data-sign-in-on-launch
+            ${signInOnLaunch ? 'checked' : ''}
+          />
+          <span class="platform-form-launch-text">Входити при запуску</span>
+        </label>
+      </div>
+  ` : '';
+  const topUpContractBlock = siteId === 'univer' ? `
+      <div class="field">
+        <label for="platform-univer-top-up-contract">Номер договору UNIVER (Приват24)</label>
+        <input
+          id="platform-univer-top-up-contract"
+          type="text"
+          data-top-up-contract-input
+          placeholder="БО-260731-6566806"
+          value="${escapeHtml(topUpContract)}"
+        />
+        <p class="platform-form-hint">Зчитується з univer.1b.app/client/payment/add/ під час оновлення портфеля.</p>
+      </div>
+  ` : '';
   const paymentAccountsBlock = siteId === 'privat' ? `
       <div class="field">
         <label for="platform-privat-payment-accounts">Картки / рахунки (через кому)</label>
@@ -346,6 +376,8 @@ function renderPlatformForm(site) {
         `)}
       </div>
       ${paymentAccountsBlock}
+      ${topUpContractBlock}
+      ${signInOnLaunchBlock}
       <div class="platform-credentials-panel" data-credentials-panel hidden>
         ${renderCredentialsList(siteId)}
       </div>
@@ -354,12 +386,9 @@ function renderPlatformForm(site) {
         <button type="button" class="action subtle" data-action="manage-credentials">Збережені облікові дані</button>
         <button type="button" class="action" data-action="save">Зберегти</button>
         <button type="button" class="action" data-action="signin-browser">Увійти в браузері</button>
-        <button
-          type="button"
-          class="action primary"
-          data-action="signin-headless"
-          ${site.supportsHeadlessSignIn === false ? 'disabled' : ''}
-        >Фоновий вхід</button>
+        ${site.supportsHeadlessSignIn !== false ? `
+        <button type="button" class="action primary" data-action="signin-headless">Фоновий вхід</button>
+        ` : ''}
         <button type="button" class="action subtle" data-action="open-site">Відкрити</button>
       </div>
     </article>
@@ -414,6 +443,10 @@ async function saveSiteCredentials(siteId) {
   if (siteId === 'privat') {
     patch.paymentAccounts = card?.querySelector('[data-payment-accounts-input]')?.value.trim() || '';
   }
+  if (siteId === 'univer') {
+    patch.signInOnLaunch = card?.querySelector('[data-sign-in-on-launch]')?.checked === true;
+    patch.topUpContract = card?.querySelector('[data-top-up-contract-input]')?.value.trim() || '';
+  }
   onboardingState = await shell.setOnboardingSite(siteId, patch);
 
   if (!onboardingState.completed) {
@@ -435,16 +468,26 @@ async function runSiteSignIn(siteId, mode) {
 
   busySites.add(siteId);
   updateSessionBadges();
-  setFormStatus(siteId, mode === 'headless' ? 'Фоновий вхід…' : 'Відкриваємо сторінку входу…');
+  const site = getSiteMeta(siteId);
+  const statusByMode = {
+    headless: siteId === 'inzhur'
+      ? 'Фоновий вхід Inzhur — телефон, пароль, SMS за потреби…'
+      : 'Фоновий вхід…',
+    manual: 'Відкриваємо сторінку входу…',
+  };
+  setFormStatus(siteId, statusByMode[mode] || statusByMode.manual);
 
   try {
     const saved = findSavedCredentials(siteId, username);
     const signInPassword = password || saved?.password || '';
     await requireShell().runSignIn(siteId, mode, username, signInPassword);
-    setFormStatus(
-      siteId,
-      mode === 'headless' ? 'Перевірте сесію у toolbar' : 'Завершіть вхід у браузері',
-    );
+    const doneByMode = {
+      headless: siteId === 'inzhur'
+        ? 'За потреби введіть SMS-код у модальному вікні'
+        : 'Перевірте сесію у toolbar',
+      manual: 'Завершіть вхід у браузері',
+    };
+    setFormStatus(siteId, doneByMode[mode] || doneByMode.manual);
   } catch (err) {
     setFormStatus(siteId, err.message, true);
   } finally {
@@ -468,6 +511,28 @@ function openSetup(options = {}) {
 }
 
 function wirePlatformForms() {
+  document.getElementById('market-view-setup')?.addEventListener('change', async (event) => {
+    const checkbox = event.target.closest('[data-sign-in-on-launch]');
+    if (!checkbox) return;
+
+    const card = checkbox.closest('.platform-form-card');
+    const siteId = card?.dataset.siteId;
+    if (siteId !== 'univer') return;
+
+    try {
+      onboardingState = await requireShell().setOnboardingSite(siteId, {
+        signInOnLaunch: checkbox.checked,
+      });
+      setFormStatus(
+        siteId,
+        checkbox.checked ? 'Автовхід при запуску увімкнено' : 'Автовхід при запуску вимкнено',
+      );
+    } catch (err) {
+      checkbox.checked = !checkbox.checked;
+      setFormStatus(siteId, err.message, true);
+    }
+  });
+
   document.getElementById('market-view-setup')?.addEventListener('focusin', (event) => {
     const input = event.target.closest('[data-username-input]');
     if (!input) return;

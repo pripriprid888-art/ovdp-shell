@@ -6,14 +6,14 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
     />
-    <title>OVDP Shell</title>
+    <title>Alpha V1.0</title>
     <link rel="icon" type="image/png" href="../assets/icon.png" />
     <link rel="stylesheet" href="shell.css" />
     <link rel="stylesheet" href="shell-minimal.css" />
   </head>
   <body class="panel-tab-bonds">
     <header id="toolbar" class="toolbar">
-      <button type="button" id="btn-brand" class="brand brand-btn" title="Кабінет">OVDP Shell</button>
+      <button type="button" id="btn-brand" class="brand brand-btn" title="Кабінет">Alpha V1.0</button>
 
       <div class="nav-group nav-manual">
         <button id="btn-back" title="Назад" disabled>&#8592;</button>
@@ -22,7 +22,7 @@
         <button id="btn-catalog" title="Inzhur">
           <span id="status-inzhur" class="status-dot status-unknown"></span>Inzhur
         </button>
-        <button id="btn-univer" title="UNIVER">
+        <button id="btn-univer" title="UNIVER — кабінет (ПКМ: публічний каталог)">
           <span id="status-univer" class="status-dot status-unknown"></span>UNIVER
         </button>
         <button id="btn-privat" title="Приват24">
@@ -34,24 +34,7 @@
     </header>
 
     <div id="workspace">
-      <div id="browser-spacer" aria-hidden="true" hidden>
-        <div id="inzhur-overlay" class="inzhur-overlay" hidden>
-          <div class="inzhur-overlay-bar">
-            <span class="inzhur-overlay-brand">Inzhur</span>
-            <span class="inzhur-overlay-hint">OVDP Shell</span>
-            <nav class="inzhur-overlay-nav" aria-label="Швидка навігація Inzhur">
-              <button type="button" class="inzhur-overlay-link" data-inzhur-nav="signin">Вхід</button>
-              <button type="button" class="inzhur-overlay-link" data-inzhur-nav="catalog">Каталог ОВДП</button>
-              <button type="button" class="inzhur-overlay-link" data-inzhur-nav="dashboard">Кабінет</button>
-              <button type="button" id="btn-inzhur-theme" class="inzhur-overlay-link inzhur-overlay-theme" title="Змінити тему сторінки">
-                Тема: Shell
-              </button>
-            </nav>
-            <button type="button" id="btn-inzhur-overlay-collapse" class="inzhur-overlay-toggle" title="Згорнути панель">▲</button>
-          </div>
-        </div>
-        <button type="button" id="btn-inzhur-overlay-expand" class="inzhur-overlay-expand" hidden title="Показати панель Inzhur">Inzhur</button>
-      </div>
+      <div id="browser-spacer" aria-hidden="true" hidden></div>
 
       <main id="cabinet-screen" class="panel-tab-bonds">
         <div class="cabinet-inner">
@@ -73,6 +56,7 @@
                   <div class="list-kind-filter">
                     <button type="button" class="list-kind-btn active" data-list-kind="catalog">Каталог</button>
                     <button type="button" class="list-kind-btn" data-list-kind="holdings">Портфель</button>
+                    <button type="button" class="list-kind-btn" data-list-kind="calendar">Календар</button>
                     <button type="button" class="list-kind-btn" id="btn-toolbar-calculator" data-toolbar="calc">Калькулятор</button>
                     <button type="button" class="list-kind-btn" data-list-kind="log">Журнал дій</button>
                     <button type="button" class="list-kind-btn" data-list-kind="setup">Особисті дані</button>
@@ -83,45 +67,105 @@
                       <button type="button" class="list-kind-btn portfolio-view-btn" data-portfolio-view="orders">Замовлення</button>
                     </div>
                     <div class="market-toolbar-filters bond-list-filter">
-                      <label class="source-filter-label" for="source-filter">Фільтр:</label>
-                      <select id="source-filter" class="source-filter-select styled-select styled-select-compact">
-                        <option value="all">Усі</option>
-                        <option value="inzhur">Inzhur</option>
-                        <option value="univer">UNIVER</option>
-                        <option value="privat">Privat</option>
-                      </select>
+                      <div class="catalog-view-filter list-kind-filter catalog-only" role="tablist" aria-label="Список облігацій">
+                        <button type="button" class="list-kind-btn catalog-view-btn active" data-catalog-view="available">Доступні</button>
+                        <button type="button" class="list-kind-btn catalog-view-btn" data-catalog-view="nbu">Усі</button>
+                      </div>
+                      <div class="catalog-filter-panel catalog-only" data-catalog-filter="available">
+                        <input
+                          type="search"
+                          id="available-catalog-search"
+                          class="nbu-catalog-search"
+                          placeholder="ISIN або назва…"
+                          aria-label="Пошук у доступних пропозиціях"
+                        >
+                        <label class="source-filter-label" for="source-filter">Платформа:</label>
+                        <select id="source-filter" class="source-filter-select styled-select styled-select-compact">
+                          <option value="all">Усі</option>
+                          <option value="inzhur">Inzhur</option>
+                          <option value="univer">UNIVER</option>
+                          <option value="privat">Privat</option>
+                        </select>
+                      </div>
+                      <div class="catalog-filter-panel catalog-only" data-catalog-filter="nbu" hidden>
+                        <input
+                          type="search"
+                          id="nbu-catalog-search"
+                          class="nbu-catalog-search"
+                          placeholder="ISIN або назва…"
+                          aria-label="Пошук у довіднику НБУ"
+                        >
+                      </div>
                     </div>
                     <button type="button" class="action primary scan-btn catalog-only" data-scan="all">Сканувати</button>
+                    <button type="button" class="action subtle catalog-only nbu-only" data-nbu-refresh>Оновити довідник</button>
                     <button type="button" class="action primary portfolio-scan-btn portfolio-only" data-portfolio-scan="all">Сканувати</button>
                   </div>
                 </div>
 
-                <div id="scan-status-manual" class="scan-status scan-status-bar bond-list-status" hidden></div>
+                <div id="scan-status-manual" class="scan-banner bond-list-status" hidden>
+                  <div class="scan-banner-body">
+                    <span class="scan-banner-icon" aria-hidden="true"></span>
+                    <div class="scan-banner-text">
+                      <p id="scan-status-message" class="scan-banner-message"></p>
+                      <p id="scan-status-meta" class="scan-banner-meta" hidden></p>
+                    </div>
+                  </div>
+                  <button type="button" id="scan-status-rescan" class="action subtle scan-banner-rescan">Сканувати знову</button>
+                </div>
 
                 <div class="market-list-scroll">
                   <div id="market-view-bonds" class="market-view-bonds">
                     <h2 id="bond-list-title-manual" class="visually-hidden">Пропозиції</h2>
                     <div class="bond-catalog">
-                      <div class="bond-catalog-head bond-catalog-grid catalog-head" aria-hidden="true">
+                      <div class="bond-catalog-head bond-catalog-grid catalog-head available-head">
                         <div class="bond-col bond-col-ident">ISIN / назва</div>
-                        <div class="bond-col bond-col-yield">Дохід · тип</div>
-                        <div class="bond-col bond-col-price">Ціна</div>
+                        <button type="button" class="bond-col bond-col-yield bond-col-sort" data-sort-key="yield" aria-sort="none">
+                          <span class="bond-col-label">Дохід</span>
+                          <span class="bond-col-sort-indicator" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="bond-col bond-col-price bond-col-sort" data-sort-key="price" aria-sort="none">
+                          <span class="bond-col-label">Ціна</span>
+                          <span class="bond-col-sort-indicator" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="bond-col bond-col-total-return bond-col-sort" data-sort-key="totalReturn" aria-sort="none" title="Сумарний дохід до погашення відносно ціни купівлі">
+                          <span class="bond-col-label">Дохід на вкладене</span>
+                          <span class="bond-col-sort-indicator" aria-hidden="true"></span>
+                        </button>
                         <div class="bond-col bond-col-maturity">Погашення</div>
                         <div class="bond-col bond-col-badges">Платформа</div>
                         <div class="bond-col bond-col-actions">Дії</div>
                       </div>
-                      <div class="bond-catalog-head bond-portfolio-grid portfolio-head" aria-hidden="true">
+                      <div class="bond-catalog-head bond-nbu-grid nbu-head catalog-only" aria-hidden="true" hidden>
+                        <div class="bond-col bond-col-ident">ISIN / вид</div>
+                        <div class="bond-col bond-col-nbu-yield">Дохідність</div>
+                        <div class="bond-col bond-col-issue">Випуск</div>
+                        <div class="bond-col bond-col-maturity">Погашення</div>
+                        <div class="bond-col bond-col-nbu-coupons">Сплата купонів</div>
+                        <div class="bond-col bond-col-nbu-circulation">В обігу</div>
+                        <div class="bond-col bond-col-badges">Доступно</div>
+                        <div class="bond-col bond-col-actions">Дії</div>
+                      </div>
+                      <div class="bond-catalog-head bond-portfolio-grid portfolio-head">
                         <div class="bond-col bond-col-ident">ISIN / назва</div>
                         <div class="bond-col bond-col-qty">Кільк.</div>
-                        <div class="bond-col bond-col-yield">Дохід · тип</div>
-                        <div class="bond-col bond-col-price">Ціна</div>
+                        <button type="button" class="bond-col bond-col-yield bond-col-sort" data-sort-key="yield" aria-sort="none">
+                          <span class="bond-col-label">Дохід</span>
+                          <span class="bond-col-sort-indicator" aria-hidden="true"></span>
+                        </button>
+                        <button type="button" class="bond-col bond-col-price bond-col-sort" data-sort-key="price" aria-sort="none">
+                          <span class="bond-col-label">Ціна</span>
+                          <span class="bond-col-sort-indicator" aria-hidden="true"></span>
+                        </button>
                         <div class="bond-col bond-col-value">Сума</div>
+                        <div class="bond-col bond-col-issue">Випуск</div>
                         <div class="bond-col bond-col-maturity">Погашення</div>
                         <div class="bond-col bond-col-badges">Платформа</div>
                         <div class="bond-col bond-col-actions">Дії</div>
                       </div>
                       <div class="bond-catalog-head bond-orders-grid orders-head" aria-hidden="true">
                         <div class="bond-col bond-col-order-id">№</div>
+                        <div class="bond-col bond-col-order-doc">Документ</div>
                         <div class="bond-col bond-col-service">Вид</div>
                         <div class="bond-col bond-col-params">Параметри</div>
                         <div class="bond-col bond-col-stage">Етап</div>
@@ -142,8 +186,56 @@
 
                   <div id="market-view-log" class="market-view-log" hidden>
                     <header class="action-log-header">
-                      <h2 class="action-log-title">Журнал дій</h2>
-                      <button type="button" id="btn-clear-background-log" class="action subtle">Очистити</button>
+                      <div class="action-log-heading">
+                        <h2 class="action-log-title">Журнал дій</h2>
+                        <p id="action-log-date-label" class="action-log-date-label"></p>
+                      </div>
+                      <div class="action-log-filters">
+                        <label for="action-log-level-filter" class="visually-hidden">Рівень</label>
+                        <select id="action-log-level-filter" class="styled-select styled-select-compact action-log-filter-select">
+                          <option value="all">Усі рівні</option>
+                          <option value="info">Інфо</option>
+                          <option value="warning">Попередження</option>
+                          <option value="error">Помилки</option>
+                          <option value="debug">Debug</option>
+                        </select>
+                        <label for="action-log-category-filter" class="visually-hidden">Категорія</label>
+                        <select id="action-log-category-filter" class="styled-select styled-select-compact action-log-filter-select">
+                          <option value="all">Усі категорії</option>
+                          <option value="scan">Сканування</option>
+                          <option value="session">Сесія</option>
+                          <option value="keepalive">Keepalive</option>
+                          <option value="sign-in">Вхід</option>
+                          <option value="buy">Купівля</option>
+                          <option value="nbu">НБУ</option>
+                          <option value="system">Система</option>
+                        </select>
+                        <label for="action-log-site-filter" class="visually-hidden">Платформа</label>
+                        <select id="action-log-site-filter" class="styled-select styled-select-compact action-log-filter-select">
+                          <option value="all">Усі платформи</option>
+                          <option value="inzhur">Inzhur</option>
+                          <option value="univer">UNIVER</option>
+                          <option value="privat">Privat</option>
+                        </select>
+                      </div>
+                      <div class="action-log-controls">
+                        <div class="action-log-date-picker">
+                          <label for="action-log-date-select" class="visually-hidden">Дата</label>
+                          <button type="button" id="btn-action-log-date-open" class="action-log-date-calendar" title="Календар" aria-label="Відкрити календар">
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                              <rect x="2" y="3" width="12" height="11" rx="1.5" stroke="currentColor" stroke-width="1.2"/>
+                              <path d="M2 6.5h12" stroke="currentColor" stroke-width="1.2"/>
+                              <path d="M5 2v2M11 2v2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                            </svg>
+                          </button>
+                          <select id="action-log-date-select" class="styled-select styled-select-compact action-log-date-select"></select>
+                          <input type="date" id="action-log-date" class="action-log-date-native visually-hidden" tabindex="-1" aria-hidden="true" />
+                        </div>
+                        <div class="action-log-actions">
+                          <button type="button" id="btn-action-log-today" class="action subtle">Сьогодні</button>
+                          <button type="button" id="btn-clear-background-log" class="action subtle action-log-clear">Очистити</button>
+                        </div>
+                      </div>
                     </header>
                     <div id="background-log" class="log-box action-log-box" aria-live="polite">
                       <p class="background-log-empty">Поки немає записів.</p>
@@ -190,11 +282,25 @@
               <p id="drawer-buy-warning" class="drawer-warning" hidden></p>
               <div id="drawer-buy-progress" class="drawer-buy-progress" hidden>
                 <div class="buy-progress-row">
-                  <div class="buy-progress-spinner" aria-hidden="true"></div>
+                  <div class="buy-progress-indicator" aria-hidden="true">
+                    <div class="buy-progress-spinner"></div>
+                    <svg class="buy-progress-tick" hidden viewBox="0 0 20 20" width="20" height="20" focusable="false">
+                      <circle cx="10" cy="10" r="9" fill="none" stroke="currentColor" stroke-width="1.5"/>
+                      <path d="M6 10.2 8.6 12.8 14 7.4" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                  </div>
                   <p id="drawer-buy-status" class="drawer-buy-status-text">—</p>
                 </div>
               </div>
+              <div id="drawer-gmail-otp-poll" class="drawer-gmail-otp-poll" hidden>
+                <p id="drawer-gmail-otp-poll-text" class="drawer-gmail-otp-poll-text"></p>
+                <div class="drawer-gmail-otp-poll-actions">
+                  <button type="button" id="btn-gmail-otp-manual" class="action subtle">Ввести код вручну</button>
+                  <button type="button" id="btn-gmail-otp-cancel" class="action subtle">Скасувати</button>
+                </div>
+              </div>
               <div class="drawer-actions drawer-actions-buy">
+                <button type="button" id="btn-drawer-buy-cancel" class="action" hidden>Скасувати</button>
                 <button type="button" id="btn-drawer-buy-route" class="action">Відкрити на сайті</button>
                 <button type="button" id="btn-drawer-buy-auto" class="action primary">Купити (авто)</button>
               </div>
@@ -203,71 +309,70 @@
 
             <div id="drawer-calc" class="drawer-panel" hidden>
               <p class="calc-isin-line">ISIN: <strong id="calc-isin">—</strong></p>
-              <p id="calc-listed-ytm" class="calc-context-note" hidden></p>
-              <p id="calc-coupon-hint" class="calc-context-note" hidden></p>
-              <div class="field">
-                <label for="nominal">Номінал однієї облігації, ₴</label>
-                <input id="nominal" type="number" min="0" step="1" value="1000" />
+              <p id="calc-quote-context" class="calc-context-note" hidden></p>
+              <p id="calc-privat-price-note" class="calc-privat-note" hidden>
+                Ціну з каталогу Приват24 недоступно — вкажіть ціну з котирування або
+                <button type="button" id="btn-calc-open-privat-quote" class="calc-inline-link">відкрити котирування</button>.
+              </p>
+
+              <div class="calc-summary">
+                <div class="calc-summary-row">
+                  <span class="calc-summary-label">Інвестиція</span>
+                  <span class="calc-summary-value" id="out-purchase">—</span>
+                </div>
+                <div class="calc-summary-row calc-summary-highlight">
+                  <span class="calc-summary-label">Прибуток до погашення</span>
+                  <span class="calc-summary-value" id="out-total">—</span>
+                </div>
+                <div class="calc-summary-row">
+                  <span class="calc-summary-label">Дохідність на вкладене</span>
+                  <span class="calc-summary-value" id="out-total-return-pct">—</span>
+                </div>
               </div>
-              <div class="field">
-                <label for="quantity">Кількість облігацій</label>
-                <input id="quantity" type="number" min="0" step="1" value="10" />
+
+              <p id="out-listed-yield" class="calc-context-note" hidden></p>
+              <p id="out-computed-ytm" class="calc-context-note" hidden></p>
+
+              <div class="calc-profit-breakdown">
+                <div class="calc-profit-line"><span>Купони</span><span id="out-total-coupons">—</span></div>
+                <div class="calc-profit-line"><span id="out-capital-label">Дисконт / премія</span><span id="out-capital">—</span></div>
               </div>
-              <div class="field">
-                <label for="coupon-rate">Купонна ставка, % річних</label>
-                <input id="coupon-rate" type="number" min="0" step="0.01" value="16" />
+
+              <div class="calc-inputs">
+                <div class="field">
+                  <label for="quantity">Кількість облігацій</label>
+                  <input id="quantity" type="number" min="0" step="1" placeholder="1" />
+                </div>
+                <div class="field">
+                  <label for="price-uah">Ціна купівлі, ₴ за облігацію</label>
+                  <input id="price-uah" type="number" min="0" step="0.01" placeholder="0" />
+                  <p id="calc-price-hint" class="calc-price-hint" hidden></p>
+                </div>
               </div>
-              <div class="field">
-                <label for="price-pct">Ціна купівлі, % від номіналу</label>
-                <input id="price-pct" type="number" min="0" step="0.01" value="100" />
+
+              <div class="calc-schedule-section">
+                <h3 class="calc-schedule-title">Графік купонів</h3>
+                <p id="calc-no-schedule-note" class="calc-context-note calc-no-schedule-note" hidden></p>
+                <div class="calc-schedule-wrap">
+                  <table class="calc-schedule-table">
+                    <thead>
+                      <tr>
+                        <th>Дата</th>
+                        <th>Тип</th>
+                        <th>На 1 обл.</th>
+                        <th>Разом</th>
+                      </tr>
+                    </thead>
+                    <tbody id="calc-schedule-body"></tbody>
+                    <tfoot id="calc-schedule-foot"></tfoot>
+                  </table>
+                </div>
               </div>
-              <div class="field">
-                <label for="calc-maturity-date">Дата погашення</label>
-                <input id="calc-maturity-date" type="date" />
-              </div>
-              <div class="field">
-                <label for="years">Термін до погашення, років (якщо дати немає)</label>
-                <input id="years" type="number" min="0" step="0.01" value="1" />
-              </div>
-              <div class="field">
-                <label for="payments">Купонних виплат на рік</label>
-                <select id="payments" class="styled-select">
-                  <option value="1">1 (річна)</option>
-                  <option value="2" selected>2 (піврічна)</option>
-                  <option value="4">4 (квартальна)</option>
-                  <option value="12">12 (щомісячна)</option>
-                </select>
-              </div>
-              <div class="calc-cashflows">
-                <h3 class="calc-cashflows-title">Грошові потоки</h3>
-                <table class="calc-cashflows-table">
-                  <thead>
-                    <tr>
-                      <th>Дата</th>
-                      <th>Подія</th>
-                      <th>Сума</th>
-                    </tr>
-                  </thead>
-                  <tbody id="calc-cashflows-body"></tbody>
-                </table>
-              </div>
-              <div class="results results-compact">
-                <div class="result-row"><span>Сума інвестиції</span><span id="out-purchase">—</span></div>
-                <div class="result-row"><span>Купон за період</span><span id="out-coupon-payment">—</span></div>
-                <div class="result-row"><span>Купонний дохід / рік</span><span id="out-annual">—</span></div>
-                <div class="result-row"><span>Усі купони до погашення</span><span id="out-total-coupons">—</span></div>
-                <div class="result-row"><span>Прибуток до погашення</span><span id="out-capital">—</span></div>
-                <div class="result-row"><span>Дохідність номіналу</span><span id="out-capital-pct">—</span></div>
-                <div class="result-row highlight"><span>YTM (розрахунок)</span><span id="out-ytm">—</span></div>
-                <div class="result-row"><span>SIM (поточна дохідність)</span><span id="out-current-yield">—</span></div>
-                <div class="result-row highlight"><span>Загальний дохід</span><span id="out-total">—</span></div>
-                <div class="result-row"><span>Загальна дохідність</span><span id="out-total-return-pct">—</span></div>
-                <div class="result-row"><span>Річна дохідність (CAGR)</span><span id="out-annualized-return">—</span></div>
-              </div>
+
               <div class="drawer-actions">
                 <button type="button" id="btn-drawer-calc-to-buy" class="action primary" hidden>Застосувати до купівлі</button>
               </div>
-              <p class="note">Розрахунок при утриманні до погашення: YTM — дисконтування потоків act/365; SIM = річний купон / ціна купівлі. Податки не враховані.</p>
+              <p class="calc-footnote">Суми для обраної кількості облігацій: <strong>інвестиція</strong> — вартість купівлі за вашою ціною; <strong>прибуток</strong> — купони плюс дисконт/премія до номіналу (без повернення номіналу в рядку прибутку). Купони з офіційного графіка НБУ; ціна та дохідність на сайті — від обраного брокера. ПДФО та комісії не враховані.</p>
             </div>
           </div>
         </aside>
@@ -278,13 +383,73 @@
         <input id="buy-quantity" type="number" value="1" />
       </div>
 
+      <div id="univer-topup-modal" class="modal-overlay univer-topup-modal" role="dialog" aria-modal="true" aria-labelledby="univer-topup-modal-title">
+        <div class="modal modal-compact univer-topup-dialog">
+          <h2 id="univer-topup-modal-title">Поповнення UNIVER</h2>
+          <p id="univer-topup-meta" class="modal-context">Оплата через Приват24</p>
+          <div class="field">
+            <label for="univer-topup-amount">Сума, ₴</label>
+            <input
+              id="univer-topup-amount"
+              type="text"
+              inputmode="decimal"
+              autocomplete="off"
+              placeholder="0.00"
+            />
+          </div>
+          <div class="field">
+            <label>Картка для оплати</label>
+            <p id="univer-topup-cards-loading" class="univer-topup-cards-loading">Завантаження карток…</p>
+            <div id="univer-topup-cards" class="privat-payment-cards univer-topup-cards"></div>
+          </div>
+          <div id="univer-topup-error" class="scan-status error" hidden></div>
+          <div class="modal-actions">
+            <button type="button" id="univer-topup-cancel" class="action">Скасувати</button>
+            <button type="button" id="univer-topup-submit" class="action primary" disabled>Продовжити</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="platform-buy-picker" class="modal-overlay platform-buy-picker" role="dialog" aria-modal="true" aria-labelledby="platform-buy-picker-title">
+        <div class="modal modal-compact platform-buy-picker-dialog">
+          <h2 id="platform-buy-picker-title">Оберіть платформу</h2>
+          <p id="platform-buy-picker-context" class="modal-context"></p>
+          <div id="platform-buy-picker-options" class="platform-buy-picker-options"></div>
+          <div class="modal-actions platform-buy-picker-actions">
+            <button type="button" id="platform-buy-picker-cancel" class="action">Скасувати</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="gmail-oauth-modal" class="modal-overlay gmail-oauth-modal" role="dialog" aria-modal="true" aria-labelledby="gmail-oauth-title">
+        <div class="modal modal-compact gmail-oauth-dialog">
+          <h2 id="gmail-oauth-title">Підключіть Gmail</h2>
+          <p id="gmail-oauth-context" class="modal-context">
+            Доступ лише для читання — щоб знаходити коди підтвердження UNIVER у пошті.
+          </p>
+          <div id="gmail-oauth-error" class="scan-status error" hidden></div>
+          <div class="modal-actions">
+            <button type="button" id="btn-gmail-oauth-skip" class="action">Пізніше</button>
+            <button type="button" id="btn-gmail-oauth-connect" class="action primary">Підключити Gmail</button>
+          </div>
+        </div>
+      </div>
+
       <div id="otp-modal" class="modal-overlay" role="dialog" aria-modal="true">
         <div class="modal">
-          <h2>Код перевірки UNIVER</h2>
+          <h2 id="otp-modal-title">Код перевірки</h2>
           <p id="otp-modal-context" class="modal-context"></p>
           <div class="field">
             <label for="otp-code">Код перевірки</label>
-            <input id="otp-code" type="text" inputmode="numeric" autocomplete="one-time-code" />
+            <input
+              id="otp-code"
+              type="tel"
+              inputmode="numeric"
+              pattern="[0-9]*"
+              maxlength="8"
+              autocomplete="one-time-code"
+              placeholder="000000"
+            />
           </div>
           <div id="otp-modal-error" class="scan-status error" hidden></div>
           <div class="modal-actions">
@@ -302,7 +467,7 @@
       </div>
     </div>
 
-    <script src="site-labels.js"></script>
+    <script src="sites/registry.js"></script>
     <script src="bond-dates.js"></script>
     <script src="bond-format.js"></script>
     <script src="bond-calculator.js"></script>
@@ -311,12 +476,17 @@
     <script src="panel-layout.js"></script>
     <script src="panel-ui.js"></script>
     <script src="shell-view.js"></script>
+    <script src="privat-payment-ui.js"></script>
     <script src="busy-overlay.js"></script>
+    <script src="gmail-oauth-ui.js"></script>
     <script src="desk-ui.js"></script>
     <script src="onboarding-ui.js"></script>
-    <script src="site-overlay.js"></script>
     <script src="automation-ui.js"></script>
     <script src="list-cache.js"></script>
-    <script src="sidepanel.js"></script>
+    <script src="nbu-enrich.js"></script>
+    <script src="bond-calendar.js"></script>
+    <script src="bond-list/grouping.js"></script>
+    <script src="bond-list/nbu-catalog.js"></script>
+    <script src="bond-list.js"></script>
   </body>
 </html>

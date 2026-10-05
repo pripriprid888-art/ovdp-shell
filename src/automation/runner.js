@@ -2,7 +2,7 @@ const { getSite } = require('../sites/config');
 const credentialsStore = require('../credentials/store');
 const automationLog = require('./logger');
 const { runAutoSignIn, waitForSelector } = require('./sign-in');
-const { purchaseUrl, HIGHLIGHT_ISIN_JS } = require('./purchase');
+const { purchaseUrl, INZHUR_CATALOG_CARD_SELECTOR, HIGHLIGHT_ISIN_JS } = require('./purchase');
 const { withHiddenWindow } = require('./hidden-window');
 const pendingOtp = require('./pending-otp');
 const { runPrivatHeadlessSignIn, BONDS_LIST_URL } = require('./flows/privat');
@@ -23,10 +23,15 @@ function resolveSignInCredentials(siteId, username, passwordOverride) {
 async function runSignIn(webContents, siteId, mode = 'manual', username, options = {}) {
   const site = getSite(siteId);
   const { navigate = true, password: passwordOverride } = options;
-  automationLog.push('info', siteId, `Вхід (${mode === 'auto' ? 'авто' : mode === 'headless' ? 'фон' : 'ручний'}) — ${site.name}`);
+  automationLog.push('info', siteId, `Вхід (${mode === 'auto' ? 'авто' : mode === 'headless' ? 'фон' : 'ручний'}) — ${site.name}`, {
+    category: 'sign-in',
+    context: { mode },
+  });
 
   if (mode === 'headless') {
-    return runHeadlessSignIn(siteId, username, passwordOverride);
+    return runHeadlessSignIn(siteId, username, passwordOverride, {
+      onOtpWait: options.onOtpWait,
+    });
   }
 
   if (navigate) {
@@ -35,7 +40,7 @@ async function runSignIn(webContents, siteId, mode = 'manual', username, options
   await waitForSelector(webContents, 'input, button, iframe', 45000);
 
   if (mode !== 'auto') {
-    automationLog.push('info', siteId, 'Завершіть вхід у вбудованому браузері.');
+    automationLog.push('info', siteId, 'Завершіть вхід у вбудованому браузері.', { category: 'sign-in' });
     return { mode: 'manual', url: webContents.getURL() };
   }
 
@@ -52,11 +57,12 @@ async function runSignIn(webContents, siteId, mode = 'manual', username, options
     siteId,
     creds.username,
     creds.password,
+    { onOtpWait: options.onOtpWait },
   );
   return { mode: 'auto', ...result, url: webContents.getURL() };
 }
 
-async function runHeadlessSignIn(siteId, username, passwordOverride) {
+async function runHeadlessSignIn(siteId, username, passwordOverride, options = {}) {
   const site = getSite(siteId);
   if (site.supportsHeadlessSignIn === false) {
     throw new Error(`Фоновий вхід для ${site.name} недоступний — використайте вхід у браузері`);
@@ -73,6 +79,12 @@ async function runHeadlessSignIn(siteId, username, passwordOverride) {
   }
 
   const result = await withHiddenWindow(siteId, async (hiddenContents) => {
+    if (siteId === 'inzhur') {
+      const { runInzhurHeadlessSignIn } = require('./flows/inzhur-signin');
+      return runInzhurHeadlessSignIn(hiddenContents, creds.username, creds.password, {
+        onOtpWait: options.onOtpWait,
+      });
+    }
     if (siteId === 'privat') {
       return runPrivatHeadlessSignIn(hiddenContents, creds.username, creds.password);
     }
@@ -90,7 +102,7 @@ async function runHeadlessSignIn(siteId, username, passwordOverride) {
 }
 
 function reportBuyStep(onProgress, siteId, step, logMessage, level = 'info') {
-  automationLog.push(level, siteId, logMessage);
+  automationLog.push(level, siteId, logMessage, { category: 'buy', context: { step } });
   onProgress?.({ siteId, step });
 }
 
@@ -106,7 +118,7 @@ async function runPurchaseRoute(webContents, siteId, isin, paymentAccount, optio
 
   if (siteId === 'inzhur' && isin) {
     reportBuyStep(onProgress, siteId, 'Пошук сертифіката', `Пошук ${isin} у каталозі`);
-    await waitForSelector(webContents, '.investment-unit[data-asset-id]', 60000);
+    await waitForSelector(webContents, INZHUR_CATALOG_CARD_SELECTOR, 60000);
     const highlighted = await webContents.executeJavaScript(HIGHLIGHT_ISIN_JS(isin));
     if (!highlighted) {
       automationLog.push('warning', siteId, `ISIN ${isin} не знайдено на сторінці каталогу`);
@@ -160,12 +172,24 @@ async function runPurchaseRoute(webContents, siteId, isin, paymentAccount, optio
 
 async function runUniverBuyFlow(webContents, { isin, quantity = 1, onOtpWait, onProgress }) {
   const runId = pendingOtp.createRunId();
-  return runUniverBuy(webContents, { isin, quantity, runId, onOtpWait, onProgress });
+  return runUniverBuy(webContents, {
+    isin,
+    quantity,
+    runId,
+    onOtpWait,
+    onProgress: (payload) => onProgress?.({ ...payload, runId }),
+  });
 }
 
-async function runHeadlessUniverBuy({ isin, quantity = 1, onOtpWait, onProgress }) {
+async function runHeadlessUniverBuy({ isin, quantity = 1, onOtpWait, onProgress, webContents = null }) {
   onProgress?.({ siteId: 'univer', step: 'Підготовка купівлі' });
-  automationLog.push('info', 'univer', `Купівля ${isin} × ${quantity} (фон)`);
+  automationLog.push('info', 'univer', `Купівля ${isin} × ${quantity}${webContents ? '' : ' (фон)'}`, {
+    category: 'buy',
+    context: { isin, quantity },
+  });
+  if (webContents && !webContents.isDestroyed()) {
+    return runUniverBuyFlow(webContents, { isin, quantity, onOtpWait, onProgress });
+  }
   return withHiddenWindow('univer', (hiddenContents) => (
     runUniverBuyFlow(hiddenContents, { isin, quantity, onOtpWait, onProgress })
   ));
@@ -181,9 +205,11 @@ function getAutomationSites() {
     passwordRequired: site.passwordRequired !== false,
     signInUrl: site.signInUrl,
     supportsAutoSignIn: site.supportsAutoSignIn !== false,
+    supportsBrowserAutoSignIn: site.features?.browserAutoSignIn === true,
+    usesApiSignIn: site.features?.apiSignIn === true,
     supportsHeadlessSignIn: site.supportsHeadlessSignIn !== false,
     supportsPurchaseRoute: site.supportsPurchaseRoute !== false,
-    supportsUniverBuy: site.id === 'univer',
+    supportsUniverBuy: site.features?.univerBuy === true,
   }));
 }
 

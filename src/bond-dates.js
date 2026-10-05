@@ -57,6 +57,14 @@ function formatMaturityDate(value) {
   return `${day}.${month}.${date.getFullYear()}`;
 }
 
+function normalizePurchaseDate(value) {
+  return normalizeMaturityDate(value);
+}
+
+function formatPurchaseDate(value) {
+  return formatMaturityDate(value);
+}
+
 function toDateInputValue(value) {
   const date = parseBondDate(value);
   if (!date) return '';
@@ -70,6 +78,8 @@ const BondDates = {
   parseBondDate,
   normalizeMaturityDate,
   formatMaturityDate,
+  normalizePurchaseDate,
+  formatPurchaseDate,
   toDateInputValue,
 };
 

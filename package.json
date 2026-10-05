@@ -2,13 +2,97 @@
   "name": "inzhur-shell",
   "productName": "OVDP Shell",
   "version": "0.1.0",
+  "author": "OVDP",
   "description": "Minimal Electron shell for manual Inzhur browsing",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron ."
+    "dev": "electron .",
+    "test": "node --test test/shared/*.test.js test/scanners/*.test.js test/bond-list/*.test.js test/automation/*.test.js test/bond-*.test.js test/univer/*.test.js test/db/*.test.js",
+    "db:ping": "node scripts/neon-ping.js",
+    "db:schema": "node scripts/apply-neon-schema.js",
+    "neon:deploy": "neon deploy --update-existing --allow-protected",
+    "neon:link": "neon link --project-id polished-smoke-90919972 --branch production",
+    "build-icon": "python3 scripts/build-icon.py",
+    "prepare:bundle-env": "node scripts/prepare-bundle-env.js",
+    "pack": "npm run prepare:bundle-env && electron-builder --dir",
+    "dist": "npm run prepare:bundle-env && electron-builder",
+    "dist:mac": "npm run prepare:bundle-env && electron-builder --mac",
+    "dist:win": "npm run prepare:bundle-env && electron-builder --win"
+  },
+  "build": {
+    "appId": "ua.ovdp.shell",
+    "productName": "OVDP Shell",
+    "copyright": "Copyright © OVDP",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets"
+    },
+    "files": [
+      "src/**/*",
+      "assets/icon.icns",
+      "assets/icon.png",
+      "assets/icon.ico",
+      "package.json"
+    ],
+    "asar": true,
+    "extraResources": [
+      {
+        "from": ".env.bundle",
+        "to": ".env"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "assets/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        "zip"
+      ],
+      "darkModeSupport": true
+    },
+    "dmg": {
+      "title": "${productName} ${version}",
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "OVDP Shell",
+      "uninstallDisplayName": "OVDP Shell",
+      "artifactName": "OVDP-Shell-Setup-${version}.${ext}"
+    }
   },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "@neon/config": "^1.8.3",
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8",
+    "neon": "^8.0.8"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@neon/env": "^1.5.0",
+    "@neondatabase/serverless": "^0.10.4"
   }
 }

@@ -15,6 +15,26 @@ function initShellView() {
     applyShellView(siteId);
   });
 
+  window.inzhurShell.onShellOtpMode?.(({ active }) => {
+    if (active) {
+      applyShellView('cabinet');
+      return;
+    }
+    window.inzhurShell.getActiveSite().then((siteId) => {
+      applyShellView(siteId);
+    });
+  });
+
+  window.inzhurShell.onShellTopUpMode?.(({ active }) => {
+    if (active) {
+      applyShellView('cabinet');
+      return;
+    }
+    window.inzhurShell.getActiveSite().then((siteId) => {
+      applyShellView(siteId);
+    });
+  });
+
   window.inzhurShell.getActiveSite().then((siteId) => {
     applyShellView(siteId);
   });

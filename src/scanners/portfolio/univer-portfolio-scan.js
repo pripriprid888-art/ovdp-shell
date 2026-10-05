@@ -3,6 +3,7 @@ const {
   CLICK_UNIVER_PORTFOLIO_TAB_JS,
   EXTRACT_UNIVER_PORTFOLIO_JS,
 } = require('./univer-portfolio-extract');
+const { mergePortfolioScanItems } = require('./lot-utils');
 const { CHECK_AUTH_UNIVER_BOOLEAN_JS } = require('../../session/univer-auth');
 
 const UNIVER_CLIENT_HOME = 'https://univer.1b.app/client/';
@@ -82,22 +83,11 @@ async function navigateToUniverPortfolio(webContents, helpers) {
 
 async function scanUniverHoldings(webContents, helpers) {
   const { broadcast, logBackground, siteId, name } = helpers;
-  const allItems = [];
-  const seen = new Set();
-
-  function mergeItems(items) {
-    for (const item of items || []) {
-      const isin = item?.isin;
-      if (!isin || seen.has(isin)) continue;
-      seen.add(isin);
-      allItems.push(item);
-    }
-  }
 
   await navigateToUniverPortfolio(webContents, helpers);
 
   const items = await webContents.executeJavaScript(EXTRACT_UNIVER_PORTFOLIO_JS);
-  mergeItems(items);
+  const allItems = mergePortfolioScanItems(items, siteId);
   logBackground?.('info', `портфель у цінних паперах: ${allItems.length} поз.`);
   broadcast('scan-state', {
     scanning: true,

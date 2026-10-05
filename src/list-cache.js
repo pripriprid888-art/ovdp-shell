@@ -27,6 +27,7 @@ function writeListCacheEntry(listKind, data) {
       inzhur: data.inzhur || null,
       univer: data.univer || null,
       privat: data.privat || null,
+      nbu_reference: data.nbu_reference || null,
       savedAt: new Date().toISOString(),
     };
     store.savedAt = store.entries[listKind].savedAt;
@@ -50,6 +51,7 @@ function readListCacheEntry(listKind) {
     inzhur: entry.inzhur || {},
     univer: entry.univer || {},
     privat: entry.privat || {},
+    nbu_reference: entry.nbu_reference || null,
     fromCache: true,
   };
 }

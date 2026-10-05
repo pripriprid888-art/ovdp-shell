@@ -1,14 +1,62 @@
 const OTP_WAIT_MS = 5 * 60 * 1000;
-const OTP_VERIFY_MS = 90 * 1000;
+const OTP_VERIFY_MS = OTP_WAIT_MS;
+const USER_CANCEL_MESSAGE = 'Скасовано користувачем';
+const USER_CANCELLED_BUY_MESSAGE = 'Купівлю скасовано';
+
+/** @type {Set<string>} */
+const userCancelledRuns = new Set();
 
 /** @type {Map<string, { resolve: (code: string) => void, reject: (err: Error) => void, timer: NodeJS.Timeout }>} */
 const waits = new Map();
+
+/** @type {Map<string, Set<(err: Error) => void>>} */
+const cancelListeners = new Map();
 
 /** @type {Map<string, { resolve: (result: { ok: true }) => void, reject: (err: Error) => void, timer: NodeJS.Timeout, promise: Promise<{ ok: true }> }>} */
 const verificationWaits = new Map();
 
 function createRunId() {
   return `otp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function trackCancel(runId, reject) {
+  if (!cancelListeners.has(runId)) cancelListeners.set(runId, new Set());
+  cancelListeners.get(runId).add(reject);
+}
+
+function untrackCancel(runId, reject) {
+  const listeners = cancelListeners.get(runId);
+  if (!listeners) return;
+  listeners.delete(reject);
+  if (!listeners.size) cancelListeners.delete(runId);
+}
+
+function notifyCancel(runId, error) {
+  const listeners = cancelListeners.get(runId);
+  if (!listeners) return;
+  for (const reject of listeners) reject(error);
+  cancelListeners.delete(runId);
+}
+
+async function raceCancel(runId, promise) {
+  let cancelReject;
+  const cancelPromise = new Promise((_, reject) => {
+    cancelReject = reject;
+    trackCancel(runId, reject);
+  });
+  try {
+    return await Promise.race([promise, cancelPromise]);
+  } finally {
+    untrackCancel(runId, cancelReject);
+  }
+}
+
+function isAwaitingCode(runId) {
+  return waits.has(runId);
+}
+
+function isAwaitingVerification(runId) {
+  return verificationWaits.has(runId);
 }
 
 function clearVerification(runId) {
@@ -26,9 +74,9 @@ function prepareVerification(runId, timeoutMs = OTP_VERIFY_MS) {
     resolveFn = resolve;
     rejectFn = reject;
   });
+  promise.catch(() => {});
   const timer = setTimeout(() => {
-    verificationWaits.delete(runId);
-    rejectFn(new Error('Час перевірки коду минув'));
+    rejectVerification(runId, new Error('Час перевірки коду минув'));
   }, timeoutMs);
   verificationWaits.set(runId, {
     resolve: resolveFn,
@@ -40,10 +88,11 @@ function prepareVerification(runId, timeoutMs = OTP_VERIFY_MS) {
 
 function awaitVerification(runId) {
   const pending = verificationWaits.get(runId);
-  if (!pending?.promise) {
-    throw new Error('Немає активного очікування перевірки коду');
+  if (pending?.promise) return pending.promise;
+  if (waits.has(runId)) {
+    throw new Error('Спочатку надішліть код перевірки');
   }
-  return pending.promise;
+  throw new Error('Немає активного очікування перевірки коду');
 }
 
 function resolveVerification(runId) {
@@ -75,8 +124,10 @@ function register(runId) {
 function waitForCode(runId, timeoutMs = OTP_WAIT_MS) {
   register(runId);
   return new Promise((resolve, reject) => {
+    trackCancel(runId, reject);
     const timer = setTimeout(() => {
       waits.delete(runId);
+      untrackCancel(runId, reject);
       reject(new Error('Час очікування коду перевірки минув'));
     }, timeoutMs);
 
@@ -85,20 +136,36 @@ function waitForCode(runId, timeoutMs = OTP_WAIT_MS) {
 }
 
 function submitCode(runId, code) {
+  if (verificationWaits.has(runId)) {
+    return { duplicate: true };
+  }
   const pending = waits.get(runId);
   if (!pending) {
     throw new Error('Немає активного очікування коду');
   }
   clearTimeout(pending.timer);
   waits.delete(runId);
+  prepareVerification(runId);
   pending.resolve(String(code || '').trim());
+  return { duplicate: false };
 }
 
-function cancel(runId, message = 'Скасовано користувачем') {
+function wasUserCancelled(runId) {
+  return userCancelledRuns.has(runId);
+}
+
+function markUserCancelled(runId) {
+  if (runId) userCancelledRuns.add(runId);
+}
+
+function cancel(runId, message = USER_CANCEL_MESSAGE) {
+  markUserCancelled(runId);
   const error = new Error(message);
+  error.code = 'USER_CANCELLED';
+  notifyCancel(runId, error);
   rejectVerification(runId, error);
   const pending = waits.get(runId);
-  if (!pending) return verificationWaits.has(runId);
+  if (!pending) return hasPending(runId);
   clearTimeout(pending.timer);
   waits.delete(runId);
   pending.reject(error);
@@ -106,12 +173,28 @@ function cancel(runId, message = 'Скасовано користувачем') 
 }
 
 function clear(runId) {
+  cancelListeners.delete(runId);
   const pending = waits.get(runId);
   if (pending) {
     clearTimeout(pending.timer);
     waits.delete(runId);
+    if (wasUserCancelled(runId)) {
+      const error = new Error(USER_CANCELLED_BUY_MESSAGE);
+      error.code = 'USER_CANCELLED';
+      pending.reject(error);
+    } else {
+      pending.reject(new Error('Завершено'));
+    }
+  } else if (wasUserCancelled(runId)) {
+    rejectVerification(runId, (() => {
+      const error = new Error(USER_CANCELLED_BUY_MESSAGE);
+      error.code = 'USER_CANCELLED';
+      return error;
+    })());
+  } else {
+    rejectVerification(runId, new Error('Завершено'));
   }
-  clearVerification(runId);
+  userCancelledRuns.delete(runId);
 }
 
 function hasPending(runId) {
@@ -121,6 +204,10 @@ function hasPending(runId) {
 module.exports = {
   OTP_WAIT_MS,
   OTP_VERIFY_MS,
+  USER_CANCEL_MESSAGE,
+  USER_CANCELLED_BUY_MESSAGE,
+  wasUserCancelled,
+  markUserCancelled,
   createRunId,
   register,
   prepareVerification,
@@ -132,4 +219,7 @@ module.exports = {
   cancel,
   clear,
   hasPending,
+  isAwaitingCode,
+  isAwaitingVerification,
+  raceCancel,
 };
